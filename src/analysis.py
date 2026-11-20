@@ -214,3 +214,64 @@ def attractiveness_score(market: dict, profile: dict | None = None) -> dict:
     }
     total = round(sum(subs[k] * w for k, w in weights.items()), 1)
     return {"score_0_10": total, "sub_scores": subs, "weights": weights}
+
+
+# --------------------------------------------------------------------------- #
+# EU aggregate profile and member-state ranking
+# --------------------------------------------------------------------------- #
+GOV_KEYS = ("rule_of_law_-2.5_2.5", "regulatory_quality_-2.5_2.5",
+            "political_stability_-2.5_2.5", "control_of_corruption_-2.5_2.5")
+
+
+def profile_for(iso2: str) -> dict | None:
+    """Country profile; for "EU" the missing governance scores are the EU-27 average."""
+    rows = country_profiles([iso2])
+    profile = rows[0] if rows else None
+    if iso2 == "EU" and profile is not None:
+        members = pd.DataFrame(country_profiles(sorted(ds.EU27)))
+        for key in GOV_KEYS:
+            if profile.get(key) is None and key in members:
+                profile[key] = round(float(members[key].dropna().mean()), 3)
+    return profile
+
+
+def rank_eu_members(hs_code: str, start_year: int, end_year: int) -> list[dict]:
+    """
+    Rank the 27 EU member states as entry markets for one product.
+
+    Demand = total imports from all origins (incl. intra-EU), growth = CAGR,
+    plus purchasing power, logistics and institutional quality.
+    """
+    df = ds.eu_members_total_imports(hs_code, [start_year, end_year])
+    if df.empty:
+        return []
+    wide = df.pivot(index="reporter", columns="year", values="value_eur").fillna(0)
+    profiles = {p["country"]: p for p in country_profiles(sorted(ds.EU27))}
+    total_eu = float(wide.get(end_year, pd.Series(dtype=float)).sum()) or 1.0
+
+    rows = []
+    for member, r in wide.iterrows():
+        last = float(r.get(end_year, 0))
+        first = float(r.get(start_year, 0))
+        p = profiles.get(member, {})
+        growth = cagr(first, last, end_year - start_year)
+        gov = [p.get(k) for k in GOV_KEYS if p.get(k) is not None]
+        size_s = _clip((math.log10(last) - 6) * 2.5) if last > 0 else 0
+        growth_s = _clip(5 + (growth or 0) / 3) if growth is not None else 5
+        ppp_s = _clip((p.get("gdp_per_capita_usd") or 0) / 8000)
+        lpi_s = _clip(((p.get("logistics_performance_1_5") or 3) - 1) * 2.5)
+        inst_s = _clip((sum(gov) / len(gov) + 2.5) * 2) if gov else 5
+        score = round(0.40 * size_s + 0.25 * growth_s + 0.15 * ppp_s + 0.10 * lpi_s + 0.10 * inst_s, 2)
+        rows.append({
+            "member": member,
+            "imports_eur": round(last, 0),
+            "share_of_eu_pct": round(last / total_eu * 100, 2),
+            "cagr_pct": growth,
+            "gdp_per_capita_usd": round(p["gdp_per_capita_usd"], 0) if p.get("gdp_per_capita_usd") else None,
+            "lpi": p.get("logistics_performance_1_5"),
+            "score_0_10": score,
+        })
+    rows.sort(key=lambda x: x["score_0_10"], reverse=True)
+    for i, row in enumerate(rows, 1):
+        row["rank"] = i
+    return rows

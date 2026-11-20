@@ -1,0 +1,60 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Market Entry Analyst: EU ⇄ China</title>
+<meta name="description" content="Data-driven market entry analysis for the EU and Chinese markets.">
+<style>
+:root{--bg:#f7f8fb;--card:#fff;--text:#14161a;--muted:#5b6270;--line:#e3e6ec;--accent:#0b5fff;--accent-soft:#e8efff;
+--ok:#0f9d58;--warn:#d98e04;--bad:#d93025}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#171a21;--text:#eef0f4;--muted:#a3aab8;--line:#2a2f3a;
+--accent:#6c9bff;--accent-soft:#1c2740}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);
+font-family:Inter,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;line-height:1.6}
+a{color:var(--accent)}.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+header.top{border-bottom:1px solid var(--line);background:var(--card)}
+header.top .wrap{display:flex;justify-content:space-between;align-items:center;height:60px}
+.brand{font-weight:700;text-decoration:none;color:var(--text)}.nav a{margin-left:18px;text-decoration:none;color:var(--muted)}
+.hero{padding:64px 0 40px}.hero h1{font-size:clamp(28px,5vw,48px);line-height:1.15;margin:0 0 16px}
+.hero p{font-size:18px;color:var(--muted);max-width:720px}.pill{display:inline-block;background:var(--accent-soft);
+color:var(--accent);padding:4px 12px;border-radius:999px;font-size:13px;font-weight:600;margin-bottom:16px}
+.btn{display:inline-block;background:var(--accent);color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;
+font-weight:600;margin:8px 8px 0 0}.btn.ghost{background:transparent;color:var(--accent);border:1px solid var(--accent)}
+.grid{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(240px,1fr))}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:20px}
+.card h3{margin:0 0 6px;font-size:17px}.card p{margin:0;color:var(--muted);font-size:14px}
+a.card{text-decoration:none;color:inherit;transition:transform .15s,border-color .15s}a.card:hover{transform:translateY(-2px);border-color:var(--accent)}
+.tag{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:6px;margin-top:10px}
+.tag.ENTER{background:#e6f4ea;color:var(--ok)}.tag.CAUTION{background:#fef3e0;color:var(--warn)}.tag.DONOT{background:#fde8e7;color:var(--bad)}
+section{padding:32px 0}h2.sec{font-size:26px;margin:0 0 18px}
+.steps{counter-reset:s}.steps .card h3:before{counter-increment:s;content:counter(s) ". ";color:var(--accent)}
+footer{border-top:1px solid var(--line);padding:24px 0;color:var(--muted);font-size:14px;margin-top:40px}
+.report{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:clamp(16px,4vw,40px);margin:24px 0}
+.report table{border-collapse:collapse;width:100%;display:block;overflow-x:auto;font-size:14px}
+.report td,.report th{border:1px solid var(--line);padding:6px 10px;text-align:left;vertical-align:top}
+.report th{background:var(--accent-soft)}.report h1{font-size:clamp(22px,4vw,32px);line-height:1.2}
+.report h2{border-bottom:2px solid var(--accent);padding-bottom:4px;margin-top:36px}
+.report blockquote{background:#fff7e6;color:#5a3d00;border-left:4px solid var(--warn);margin:0;padding:10px 14px;border-radius:6px}
+.kpis{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));margin:16px 0}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+.kpi b{display:block;font-size:22px}.kpi span{color:var(--muted);font-size:13px}
+.charts{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}
+@media (max-width:560px){.nav a:nth-child(2){display:none}.nav a{margin-left:12px;font-size:14px}.brand{font-size:15px}}
+.chart{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:8px;min-width:0}
+</style></head><body>
+<header class="top"><div class="wrap"><a class="brand" href="index.html">🌍 Market Entry Analyst</a>
+<nav class="nav"><a href="index.html#cases">Case studies</a><a href="index.html#how">How it works</a>
+<a href="https://github.com/onurusalan/ai-market-entry-analyst">GitHub</a></nav></div></header>
+<main class="wrap">
+<section class="hero"><span class="pill">EU ⇄ China · International Business × Data</span>
+<h1>Market entry decisions, backed by official trade data.</h1>
+<p>An analytics platform that turns Eurostat, UN Comtrade and World Bank data into consulting-style market entry
+reports for the EU and Chinese markets: verdict, PESTEL, CAGE distance, risk matrix and entry-mode recommendation.</p>
+<a class="btn" href="#cases">See case studies</a><a class="btn ghost" href="https://github.com/onurusalan/ai-market-entry-analyst">View source on GitHub</a></section>
+<section id="cases"><h2 class="sec">Case studies (generated from live data)</h2><div class="grid"><a class="card" href="reports/ebikes-taiwan-to-eu.html"><h3>🚲 E-bikes</h3><p>Taiwan → EU-27</p><p style="margin-top:8px">Exclusive distributor or agent, with a small local sales office</p><span class="tag CAUTION">ENTER WITH CAUTION · 6.2/10</span></a><a class="card" href="reports/evs-china-to-eu.html"><h3>🚗 Battery-electric cars</h3><p>China → EU-27</p><p style="margin-top:8px">Wholly owned sales subsidiary (later local assembly if volumes justify)</p><span class="tag CAUTION">ENTER WITH CAUTION · 7.9/10</span></a><a class="card" href="reports/skincare-france-to-china.html"><h3>🧴 Skincare</h3><p>France → China</p><p style="margin-top:8px">Cross-border e-commerce first (e.g. Tmall Global), then a local distributor</p><span class="tag ENTER">ENTER · 6.7/10</span></a><a class="card" href="reports/wine-italy-to-china.html"><h3>🍷 Bottled wine</h3><p>Italy → China</p><p style="margin-top:8px">Exclusive Chinese importer-distributor, supported by cross-border e-commerce</p><span class="tag CAUTION">ENTER WITH CAUTION · 5.4/10</span></a><a class="card" href="reports/medicines-germany-to-china.html"><h3>💊 Medicaments</h3><p>Germany → China</p><p style="margin-top:8px">Joint venture or licensing with an established Chinese partner</p><span class="tag ENTER">ENTER · 6.9/10</span></a><a class="card" href="reports/batteries-korea-to-eu.html"><h3>🔋 Lithium-ion batteries</h3><p>South Korea → EU-27</p><p style="margin-top:8px">Wholly owned sales subsidiary (later local assembly if volumes justify)</p><span class="tag CAUTION">ENTER WITH CAUTION · 7.2/10</span></a><a class="card" href="reports/heatpumps-japan-to-eu.html"><h3>🌡️ Heat pumps</h3><p>Japan → EU-27</p><p style="margin-top:8px">Wholly owned sales subsidiary (later local assembly if volumes justify)</p><span class="tag ENTER">ENTER · 6.8/10</span></a><a class="card" href="reports/furniture-vietnam-to-eu.html"><h3>🪑 Wooden furniture</h3><p>Vietnam → EU-27</p><p style="margin-top:8px">Indirect / direct exporting via importers and distributors</p><span class="tag CAUTION">ENTER WITH CAUTION · 6.2/10</span></a></div></section>
+<section><h2 class="sec">What it does</h2><div class="grid"><div class="card"><h3>📊 Live official data</h3><p>Eurostat Comext, UN Comtrade and World Bank APIs; no estimates or invented numbers.</p></div><div class="card"><h3>📈 Supply concentration</h3><p>Herfindahl-Hirschman Index shows dependency on dominant suppliers such as China.</p></div><div class="card"><h3>🎯 Transparent scoring</h3><p>A 0-10 attractiveness score from size, growth, openness, institutions and logistics.</p></div><div class="card"><h3>🧭 IB frameworks</h3><p>PESTEL, CAGE distance, risk matrix and OLI-based entry-mode logic, built into code.</p></div><div class="card"><h3>🇪🇺 EU-27 ranking</h3><p>Ranks all member states to pick the best first markets.</p></div><div class="card"><h3>🤖 Optional AI agent</h3><p>A Claude tool-use agent can add live web research on tariffs and regulation.</p></div></div></section>
+<section id="how"><h2 class="sec">How it works</h2><div class="grid steps"><div class="card"><h3>Describe the case</h3><p>Product (HS6 code), target market (EU, a member state or China), home country and company size.</p></div><div class="card"><h3>Pull live data</h3><p>Trade flows, supplier shares, macro, logistics and governance indicators.</p></div><div class="card"><h3>Analyse</h3><p>Market size and growth, HHI, attractiveness score, CAGE distance, EU-27 ranking.</p></div><div class="card"><h3>Decide</h3><p>Verdict, PESTEL, regulation checklist, risk matrix, entry mode and a 90-day plan.</p></div></div>
+<p style="color:var(--muted);margin-top:16px">Run the interactive app (dashboard, custom reports, EU-27 ranking) locally
+with <code>streamlit run app.py</code>; see the <a href="https://github.com/onurusalan/ai-market-entry-analyst#-quick-start">quick start</a>.</p></section>
+</main>
+<footer><div class="wrap">Built by Onur Usalan · MSc International Business · BSc Management Information Systems ·
+Data: Eurostat, UN Comtrade, World Bank · Updated 2026-11-21 ·
+<a href="https://github.com/onurusalan/ai-market-entry-analyst">Source code</a></div></footer></body></html>

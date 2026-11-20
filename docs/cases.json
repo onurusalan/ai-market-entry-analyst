@@ -1,0 +1,82 @@
+[
+  {
+    "slug": "ebikes-taiwan-to-eu",
+    "emoji": "🚲",
+    "label": "E-bikes",
+    "home": "Taiwan",
+    "target": "EU-27",
+    "verdict": "ENTER WITH CAUTION",
+    "score": 6.2,
+    "mode": "Exclusive distributor or agent, with a small local sales office"
+  },
+  {
+    "slug": "evs-china-to-eu",
+    "emoji": "🚗",
+    "label": "Battery-electric cars",
+    "home": "China",
+    "target": "EU-27",
+    "verdict": "ENTER WITH CAUTION",
+    "score": 7.9,
+    "mode": "Wholly owned sales subsidiary (later local assembly if volumes justify)"
+  },
+  {
+    "slug": "skincare-france-to-china",
+    "emoji": "🧴",
+    "label": "Skincare",
+    "home": "France",
+    "target": "China",
+    "verdict": "ENTER",
+    "score": 6.7,
+    "mode": "Cross-border e-commerce first (e.g. Tmall Global), then a local distributor"
+  },
+  {
+    "slug": "wine-italy-to-china",
+    "emoji": "🍷",
+    "label": "Bottled wine",
+    "home": "Italy",
+    "target": "China",
+    "verdict": "ENTER WITH CAUTION",
+    "score": 5.4,
+    "mode": "Exclusive Chinese importer-distributor, supported by cross-border e-commerce"
+  },
+  {
+    "slug": "medicines-germany-to-china",
+    "emoji": "💊",
+    "label": "Medicaments",
+    "home": "Germany",
+    "target": "China",
+    "verdict": "ENTER",
+    "score": 6.9,
+    "mode": "Joint venture or licensing with an established Chinese partner"
+  },
+  {
+    "slug": "batteries-korea-to-eu",
+    "emoji": "🔋",
+    "label": "Lithium-ion batteries",
+    "home": "South Korea",
+    "target": "EU-27",
+    "verdict": "ENTER WITH CAUTION",
+    "score": 7.2,
+    "mode": "Wholly owned sales subsidiary (later local assembly if volumes justify)"
+  },
+  {
+    "slug": "heatpumps-japan-to-eu",
+    "emoji": "🌡️",
+    "label": "Heat pumps",
+    "home": "Japan",
+    "target": "EU-27",
+    "verdict": "ENTER",
+    "score": 6.8,
+    "mode": "Wholly owned sales subsidiary (later local assembly if volumes justify)"
+  },
+  {
+    "slug": "furniture-vietnam-to-eu",
+    "emoji": "🪑",
+    "label": "Wooden furniture",
+    "home": "Vietnam",
+    "target": "EU-27",
+    "verdict": "ENTER WITH CAUTION",
+    "score": 6.2,
+    "mode": "Indirect / direct exporting via importers and distributors"
+  }
+]

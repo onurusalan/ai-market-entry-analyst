@@ -105,8 +105,9 @@ def _parse_jsonstat(data: dict) -> pd.DataFrame:
     df = pd.DataFrame(rows)
     if df.empty:
         return df
-    df["partner_name"] = df["partner"].map(labels.get("partner", {}))
-    df["product_name"] = df["product"].map(labels.get("product", {}))
+    for dim in ("partner", "product"):
+        if dim in df:
+            df[f"{dim}_name"] = df[dim].map(labels.get(dim, {}))
     return df
 
 
@@ -324,3 +325,23 @@ def country_fundamentals(iso2_codes: list[str]) -> pd.DataFrame:
                 records[iso2][name] = row["value"]
                 records[iso2][f"{name}_year"] = row.get("date")
     return pd.DataFrame(records.values())
+
+
+def eu_members_total_imports(hs_code: str, years: list[int], partner: str = "WORLD") -> pd.DataFrame:
+    """
+    Imports of one product into EACH EU member state from a partner
+    (default WORLD = all origins, incl. intra-EU). One row per member and year.
+    """
+    params = [
+        ("format", "JSON"), ("lang", "en"), ("freq", "A"), ("partner", partner),
+        ("product", hs_code), ("flow", "1"), ("indicators", "VALUE_IN_EUROS"),
+    ]
+    params += [("reporter", r) for r in sorted(EU27)]
+    params += [("time", str(y)) for y in years]
+    data = _cached_get_json(EUROSTAT_URL, params)
+    df = _parse_jsonstat(data)
+    if df.empty:
+        return df
+    df = df.rename(columns={"time": "year", "value": "value_eur"})
+    df["year"] = df["year"].astype(int)
+    return df[["reporter", "year", "value_eur"]]
