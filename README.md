@@ -58,6 +58,17 @@ streamlit run app.py
 - The **AI report** needs an Anthropic API key ([console.anthropic.com](https://console.anthropic.com)).
 - Optional: a free **UN Comtrade** key (`COMTRADE_API_KEY`) makes China data faster. Without one, the public preview API is used.
 
+## ☁️ Deploy (Streamlit Community Cloud, free)
+
+1. Push this repo to GitHub.
+2. Go to [share.streamlit.io](https://share.streamlit.io) → **Create app** → pick the repo, branch `main`, main file `app.py`.
+3. In **Advanced settings → Secrets**, add:
+   ```toml
+   ANTHROPIC_API_KEY = "sk-ant-..."
+   DEMO_ACCESS_CODE = "choose-a-code"
+   ```
+   The data dashboard is public. The AI report needs either the demo access code (uses your key, limited to 3 reports per session) or the visitor's own API key.
+
 ## 📐 Methodology
 
 **Market size.** Imports into the target market are the proxy for addressable demand: extra-EU imports (Eurostat `EXT_EU27_2020`) for the EU, China-reported imports for China (excluding re-imports of Chinese goods). Imports measure demand met from abroad, not total consumption.

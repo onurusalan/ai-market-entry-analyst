@@ -81,11 +81,24 @@ with st.sidebar:
         "- Web araması (güncel regülasyon, haber)"
     )
     st.divider()
-    has_key = bool(os.getenv("ANTHROPIC_API_KEY"))
-    st.markdown("**AI durumu:** " + ("🟢 Hazır" if has_key else "🔴 API anahtarı yok"))
-    if not has_key:
-        st.caption("AI rapor için `.env` dosyasına `ANTHROPIC_API_KEY` ekleyin. "
-                   "Veri paneli anahtarsız çalışır.")
+    # --- AI access -------------------------------------------------------- #
+    # On a public deployment the owner's key must not be usable by everyone:
+    # visitors either enter the demo access code or bring their own API key.
+    owner_key = os.getenv("ANTHROPIC_API_KEY", "")
+    access_code = os.getenv("DEMO_ACCESS_CODE", "")
+    st.markdown("**AI erişimi**")
+    user_key = st.text_input("Kendi Anthropic API anahtarınız", type="password",
+                             help="Sadece bu oturumda kullanılır, kaydedilmez.")
+    code_ok = False
+    if owner_key and access_code:
+        entered = st.text_input("veya demo erişim kodu", type="password")
+        code_ok = bool(entered) and entered == access_code
+    elif owner_key:
+        code_ok = True  # local use: no access code configured
+    api_key = user_key or (owner_key if code_ok else "")
+    st.markdown("**AI durumu:** " + ("🟢 Hazır" if api_key else "🔴 Kapalı"))
+    if not api_key:
+        st.caption("AI raporu için API anahtarı veya demo kodu gerekir. Veri paneli herkese açık.")
 
 tab_data, tab_ai, tab_method = st.tabs(["📊 Veri Paneli", "🤖 AI Pazara Giriş Raporu", "📐 Metodoloji"])
 
@@ -215,14 +228,25 @@ with tab_ai:
                                                "Fransa", "İtalya", "Hollanda", "İspanya", "Polonya"])
         extra = st.text_area("Ek bağlam (opsiyonel)",
                              "Yıllık ciro ~50M €, premium segment, online satış kanalı güçlü.")
-        submitted = st.form_submit_button("🚀 Raporu oluştur", type="primary",
-                                          disabled=not os.getenv("ANTHROPIC_API_KEY"))
+        submitted = st.form_submit_button("🚀 Raporu oluştur", type="primary", disabled=not api_key)
 
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        st.info("AI raporu için bir Anthropic API anahtarı gerekiyor. README'deki kurulum adımlarına bakın.")
+    if not api_key:
+        st.info("AI raporu için soldaki menüden kendi API anahtarınızı veya demo erişim kodunu girin.")
+
+    MAX_REPORTS_PER_SESSION = 3
+    used = st.session_state.get("reports_used", 0)
+    using_owner_key = api_key and not user_key
+    if submitted and using_owner_key and used >= MAX_REPORTS_PER_SESSION:
+        st.warning(f"Demo limiti: oturum başına {MAX_REPORTS_PER_SESSION} rapor. "
+                   "Devam etmek için kendi API anahtarınızı kullanın.")
+        submitted = False
 
     if submitted:
+        import anthropic
+
         from src.agent import TOOL_LABELS, build_prompt, run_agent
+
+        st.session_state["reports_used"] = used + 1
 
         prompt = build_prompt(company, product, home, target_ai, extra)
         with st.status("AI ajanı çalışıyor…", expanded=True) as status:
@@ -233,7 +257,8 @@ with tab_ai:
                     st.write(f"🔧 {label}  \n`{detail[:120]}`")
 
             try:
-                result = run_agent(prompt, on_event=on_event)
+                result = run_agent(prompt, on_event=on_event,
+                                   client=anthropic.Anthropic(api_key=api_key))
                 status.update(label=f"Rapor hazır · {len(result.tool_calls)} araç çağrısı", state="complete")
                 st.session_state["report"] = result.report_markdown
             except Exception as exc:
