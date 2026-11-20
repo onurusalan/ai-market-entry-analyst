@@ -1,0 +1,216 @@
+"""
+Analysis layer: turns raw trade data into market-entry metrics.
+
+All functions return plain dicts / lists so the same results can be shown
+in the web app AND handed to the AI agent as JSON.
+"""
+
+from __future__ import annotations
+
+import math
+
+import pandas as pd
+
+from . import data_sources as ds
+
+
+# --------------------------------------------------------------------------- #
+# Core metrics
+# --------------------------------------------------------------------------- #
+def hhi(shares_pct: list[float]) -> float:
+    """Herfindahl-Hirschman Index from market shares in percent (0-10,000)."""
+    return round(sum(s ** 2 for s in shares_pct), 0)
+
+
+def hhi_label(value: float) -> str:
+    """Concentration bands used by the US DOJ/FTC 2023 Merger Guidelines."""
+    if value < 1000:
+        return "Unconcentrated (diversified supply)"
+    if value <= 1800:
+        return "Moderately concentrated"
+    return "Highly concentrated"
+
+
+def cagr(first: float, last: float, years: int) -> float | None:
+    if not first or first <= 0 or years <= 0 or last is None or last <= 0:
+        return None
+    return round(((last / first) ** (1 / years) - 1) * 100, 2)
+
+
+def _supplier_table(df: pd.DataFrame, value_col: str, total: float, top_n: int) -> list[dict]:
+    df = df.sort_values(value_col, ascending=False)
+    rows = []
+    for _, r in df.head(top_n).iterrows():
+        rows.append({
+            "partner": r["partner"],
+            "partner_name": str(r["partner_name"]).split(" (")[0],
+            "value": round(float(r[value_col]), 0),
+            "share_pct": round(float(r[value_col]) / total * 100, 2) if total else None,
+        })
+    return rows
+
+
+# --------------------------------------------------------------------------- #
+# EU as the target market
+# --------------------------------------------------------------------------- #
+def analyze_eu_market(
+    hs_code: str, start_year: int = 2015, end_year: int = 2024, reporter: str = "EU",
+    top_n: int = 10,
+) -> dict:
+    """
+    Market analysis for selling an HS6 product INTO the EU (or one member state).
+    Market size is proxied by extra-EU imports (what the EU buys from outside).
+    """
+    countries, totals = ds.eu_extra_imports(hs_code, start_year, end_year, reporter)
+    if countries.empty or totals.empty:
+        return {"error": f"No Eurostat data for HS {hs_code} / {reporter} in {start_year}-{end_year}."}
+
+    last_year = int(totals.index.max())
+    first_year = int(totals.index.min())
+    total_last = float(totals.loc[last_year])
+    latest = countries[countries["year"] == last_year]
+    suppliers = _supplier_table(latest, "value_eur", total_last, top_n)
+    all_shares = (latest["value_eur"] / total_last * 100).tolist()
+    concentration = hhi(all_shares)
+
+    china_by_year = countries[countries["partner"] == "CN"].set_index("year")["value_eur"]
+    china_share_trend = {
+        int(y): round(float(china_by_year.get(y, 0)) / float(totals.loc[y]) * 100, 2)
+        for y in totals.index if totals.loc[y]
+    }
+
+    product_name = countries["product_name"].dropna().iloc[0] if not countries.empty else ""
+
+    result = {
+        "market": "EU-27" if reporter == "EU" else reporter,
+        "hs_code": hs_code,
+        "product_name": product_name,
+        "currency": "EUR",
+        "source": "Eurostat Comext DS-045409 (extra-EU imports)",
+        "years": [first_year, last_year],
+        "import_market_size_by_year": {int(k): round(float(v), 0) for k, v in totals.items()},
+        "latest_year": last_year,
+        "latest_market_size": round(total_last, 0),
+        "cagr_pct": cagr(float(totals.loc[first_year]), total_last, last_year - first_year),
+        "top_suppliers_latest_year": suppliers,
+        "hhi": concentration,
+        "hhi_label": hhi_label(concentration),
+        "china_share_pct_by_year": china_share_trend,
+    }
+
+    if reporter == "EU":
+        try:
+            members = ds.eu_member_imports_from(hs_code, last_year, "CN")
+            result["eu_members_importing_from_china_latest_year"] = [
+                {"member": r["reporter"], "value_eur": round(float(r["value_eur"]), 0)}
+                for _, r in members.iterrows()
+            ]
+        except RuntimeError:
+            pass
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# China as the target market
+# --------------------------------------------------------------------------- #
+def analyze_china_market(
+    hs_code: str, start_year: int = 2019, end_year: int = 2024, top_n: int = 10
+) -> dict:
+    """Market analysis for selling an HS6 product INTO China (China's imports)."""
+    years = list(range(start_year, end_year + 1))
+    df = ds.china_imports_by_partner(hs_code, years)
+    if df.empty:
+        return {"error": f"No UN Comtrade data for China imports of HS {hs_code}."}
+
+    df = df.copy()
+    # Comtrade reports Taiwan as "Other Asia, nes" (code 490)
+    df.loc[df["partner_code"] == 490, ["partner", "partner_name"]] = ["TW", "Taiwan (Other Asia, nes)"]
+    df["is_group"] = df["is_group"] & (df["partner_code"] != 490)
+    # Exclude China's re-imports of its own goods: we want foreign suppliers only
+    reimports = df[df["partner_code"] == ds.CHINA_M49].groupby("year")["value_usd"].sum()
+    df = df[df["partner_code"] != ds.CHINA_M49]
+
+    world = df[df["is_world"]].set_index("year")["value_usd"]
+    world = world.sub(reimports, fill_value=0)
+    countries = df[~df["is_world"] & ~df["is_group"]]
+    if world.empty:
+        world = countries.groupby("year")["value_usd"].sum()
+
+    last_year = int(world.index.max())
+    first_year = int(world.index.min())
+    total_last = float(world.loc[last_year])
+    latest = countries[countries["year"] == last_year]
+    suppliers = _supplier_table(latest, "value_usd", total_last, top_n)
+    concentration = hhi((latest["value_usd"] / total_last * 100).tolist())
+
+    eu_by_year = countries[countries["is_eu_member"]].groupby("year")["value_usd"].sum()
+    eu_share_trend = {
+        int(y): round(float(eu_by_year.get(y, 0)) / float(world.loc[y]) * 100, 2)
+        for y in world.index if world.loc[y]
+    }
+
+    return {
+        "market": "China",
+        "hs_code": hs_code,
+        "currency": "USD",
+        "source": "UN Comtrade (China-reported imports, excluding re-imports of Chinese goods)",
+        "years": [first_year, last_year],
+        "import_market_size_by_year": {int(k): round(float(v), 0) for k, v in world.items()},
+        "latest_year": last_year,
+        "latest_market_size": round(total_last, 0),
+        "cagr_pct": cagr(float(world.loc[first_year]), total_last, last_year - first_year),
+        "top_suppliers_latest_year": suppliers,
+        "hhi": concentration,
+        "hhi_label": hhi_label(concentration),
+        "eu27_share_pct_by_year": eu_share_trend,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Country fundamentals and attractiveness score
+# --------------------------------------------------------------------------- #
+def country_profiles(iso2_codes: list[str]) -> list[dict]:
+    df = ds.country_fundamentals(iso2_codes)
+    df = df.where(pd.notnull(df), None)
+    return df.to_dict(orient="records")
+
+
+def _clip(x: float, lo: float = 0.0, hi: float = 10.0) -> float:
+    return max(lo, min(hi, x))
+
+
+def attractiveness_score(market: dict, profile: dict | None = None) -> dict:
+    """
+    Transparent 0-10 market attractiveness score built from five sub-scores.
+    Weights are explicit so users (and interviewers) can see the logic.
+    """
+    weights = {"market_size": 0.25, "growth": 0.25, "competitive_openness": 0.20,
+               "institutional_quality": 0.15, "logistics": 0.15}
+    size = market.get("latest_market_size") or 0
+    # log scale: ~10M -> 2, ~100M -> 4, ~1B -> 6, ~10B -> 8, ~100B -> 10
+    size_score = _clip((math.log10(size) - 6) * 2) if size > 0 else 0
+    g = market.get("cagr_pct")
+    growth_score = _clip(5 + (g or 0) / 3) if g is not None else 5
+    openness_score = _clip(10 - (market.get("hhi") or 10000) / 1000)
+
+    inst_score, log_score = 5.0, 5.0
+    if profile:
+        gov = [profile.get(k) for k in (
+            "rule_of_law_-2.5_2.5", "regulatory_quality_-2.5_2.5",
+            "political_stability_-2.5_2.5", "control_of_corruption_-2.5_2.5")]
+        gov = [v for v in gov if v is not None]
+        if gov:
+            inst_score = _clip((sum(gov) / len(gov) + 2.5) * 2)
+        lpi = profile.get("logistics_performance_1_5")
+        if lpi:
+            log_score = _clip((lpi - 1) * 2.5)
+
+    subs = {
+        "market_size": round(size_score, 1),
+        "growth": round(growth_score, 1),
+        "competitive_openness": round(openness_score, 1),
+        "institutional_quality": round(inst_score, 1),
+        "logistics": round(log_score, 1),
+    }
+    total = round(sum(subs[k] * w for k, w in weights.items()), 1)
+    return {"score_0_10": total, "sub_scores": subs, "weights": weights}
