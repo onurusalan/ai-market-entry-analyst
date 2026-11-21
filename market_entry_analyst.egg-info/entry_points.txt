@@ -1,2 +1,0 @@
-[console_scripts]
-market-entry = src.cli:main
