@@ -88,7 +88,7 @@ def test_entry_mode_attractive_close_large_is_subsidiary():
 
 
 # ---------------------------------------------------------------- end-to-end (mocked data)
-def test_generate_report_end_to_end(monkeypatch):
+def _mock_report(monkeypatch):
     market = {
         "market": "China", "hs_code": "330499", "currency": "USD", "source": "UN Comtrade (test)",
         "years": [2019, 2024], "import_market_size_by_year": {2019: 1e10, 2024: 1.2e10},
@@ -108,3 +108,26 @@ def test_generate_report_end_to_end(monkeypatch):
         assert section in rep.markdown
     assert rep.data["verdict"] in {"ENTER", "ENTER WITH CAUTION", "DO NOT ENTER NOW"}
     assert "e-commerce" in rep.data["entry_mode"]["mode"].lower()
+    return rep
+
+
+def test_generate_report_end_to_end(monkeypatch):
+    _mock_report(monkeypatch)
+
+
+# ---------------------------------------------------------------- web app data (mocked data)
+def test_site_payloads_are_json_ready(monkeypatch):
+    import json
+
+    from scripts import build_site
+
+    rep = _mock_report(monkeypatch)
+    m = build_site.market_payload("330499", "CN", rep.data)
+    r = build_site.report_payload(rep, "FR", "small")
+    json.dumps(m)
+    json.dumps(r)
+    assert m["years"] == [2019, 2024] and m["share"] == {"2019": 30.0, "2024": 35.0}
+    assert m["suppliers"][0]["name"] == "France" and m["ranking"] == []
+    assert r["verdict"] == rep.data["verdict"] and r["home_name"] == "France"
+    assert r["html"].lstrip().startswith("<p>") and "<h1>" not in r["html"]
+    assert set(r["cage_dims"]) == {"Cultural", "Administrative", "Geographic", "Economic"}

@@ -1,7 +1,7 @@
 # 🌍 Market Entry Analyst: EU ⇄ China
 
 [![CI](https://github.com/onurusalan/ai-market-entry-analyst/actions/workflows/ci.yml/badge.svg)](https://github.com/onurusalan/ai-market-entry-analyst/actions/workflows/ci.yml)
-**Live demo:** https://onurusalan.github.io/ai-market-entry-analyst/
+**Live app:** https://onurusalan.github.io/ai-market-entry-analyst/ (interactive analyzer, no sign-up)
 
 **A data platform that turns official trade statistics into consulting-style market entry reports for the EU and Chinese markets.**
 
@@ -20,7 +20,7 @@ Everything runs on **free public data**. No paid service is needed. An optional 
 | 🇪🇺 | **EU-27 ranking** | Ranks all member states on demand, growth, purchasing power, logistics and institutions |
 | 📈 | **Supply concentration (HHI)** | Herfindahl-Hirschman Index with DOJ/FTC 2023 bands to quantify supplier dependency |
 | 🎯 | **Transparent scoring** | 0-10 attractiveness score with published weights and formulas |
-| 🌐 | **Static showcase site** | 8 case studies rebuilt monthly from live data by GitHub Actions and published on GitHub Pages |
+| 🌐 | **Interactive web app** | Analyzer on GitHub Pages: 10 products × EU-27/China × 16 home countries × 3 company sizes (480 reports), with charts, EU map, CAGE and risk register, PDF export, dark mode. Rebuilt monthly from live data by GitHub Actions |
 | 🤖 | **Optional AI agent** | Claude tool-use agent with web search (bring your own key) |
 
 ### Case studies on the live site
@@ -64,8 +64,9 @@ Everything runs on **free public data**. No paid service is needed. An optional 
 └──────────────────────────────┬───────────────────────────────────┘
                                ↓
 ┌───────────────────────────────┐   ┌──────────────────────────────┐
-│ app.py: Streamlit web app     │   │ scripts/build_site.py:       │
-│ report · dashboard · ranking  │   │ static site → GitHub Pages   │
+│ app.py: Streamlit web app     │   │ scripts/build_site.py →      │
+│ report · dashboard · ranking  │   │ JSON data + site/ front end  │
+│ (any HS6 code, run locally)   │   │ (HTML/CSS/JS, Plotly) → Pages│
 └───────────────────────────────┘   └──────────────────────────────┘
 ```
 
@@ -83,14 +84,14 @@ Other commands:
 
 ```bash
 pytest -q                       # offline unit tests
-python scripts/build_site.py    # rebuild the static showcase site into docs/
+python scripts/build_site.py    # rerun all 480 reports and rebuild the web app into docs/
 ```
 
 Optional environment variables (see `.env.example`): `COMTRADE_API_KEY` (free, faster China data) and `ANTHROPIC_API_KEY` (AI narrative).
 
 ## ☁️ Deploy the interactive app (free)
 
-The static showcase site is already live on GitHub Pages. To host the interactive Streamlit app as well:
+The analyzer web app is already live on GitHub Pages. To also host the Streamlit app (any HS6 code, custom year ranges):
 
 1. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub.
 2. **Create app** → repository `onurusalan/ai-market-entry-analyst`, branch `main`, file `app.py` → **Deploy**.
@@ -130,7 +131,7 @@ No secrets are required: the app runs fully on public data.
 
 ## 🛠️ Tech stack
 
-Python · pandas · REST APIs (Eurostat SDMX/JSON-stat, UN Comtrade, World Bank) · Streamlit · Plotly · pytest · GitHub Actions · GitHub Pages · optional Anthropic Claude API
+Python · pandas · REST APIs (Eurostat SDMX/JSON-stat, UN Comtrade, World Bank) · Streamlit · Plotly · vanilla HTML/CSS/JavaScript · pytest · GitHub Actions · GitHub Pages · optional Anthropic Claude API
 
 ---
 

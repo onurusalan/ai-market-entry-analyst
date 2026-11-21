@@ -24,7 +24,45 @@ from src.report_engine import COMPANY_SIZES, generate_report
 
 load_dotenv()
 
-st.set_page_config(page_title="AI Market Entry Analyst", page_icon="🌍", layout="wide")
+st.set_page_config(page_title="Market Entry Analyst", page_icon="🌍", layout="wide")
+
+ACCENT = "#2457f5"
+px.defaults.template = "plotly_white"
+px.defaults.color_discrete_sequence = [ACCENT, "#0b2545", "#8a93a3", "#6c9bff", "#b8c4d9"]
+
+st.markdown("""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+html, body, [class*="css"], .stMarkdown, .stTextInput, .stSelectbox, button { font-family: 'Inter', sans-serif !important; }
+.block-container { padding-top: 1.6rem; max-width: 1240px; }
+#MainMenu, footer, [data-testid="stDecoration"] { visibility: hidden; }
+.app-hero { background: linear-gradient(135deg, #0b2545 0%, #1a3fb8 100%); color: #fff; border-radius: 16px;
+  padding: 26px 30px; margin-bottom: 18px; }
+.app-hero h1 { color: #fff; font-size: 28px; margin: 0 0 4px; letter-spacing: -.02em; padding: 0; }
+.app-hero p { margin: 0; opacity: .82; font-size: 15px; }
+.app-hero .tags { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; }
+.app-hero .tags span { background: rgba(255,255,255,.14); padding: 3px 10px; border-radius: 999px; font-size: 12.5px; font-weight: 600; }
+[data-testid="stMetric"] { background: #fff; border: 1px solid #e3e7ed; border-radius: 12px; padding: 14px 16px;
+  box-shadow: 0 1px 2px rgba(16,24,40,.04); }
+[data-testid="stMetricLabel"] p { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: #5a6474; }
+[data-testid="stMetricValue"] { font-size: clamp(18px, 1.8vw, 26px); font-weight: 700; letter-spacing: -.02em; }
+[data-testid="stMetricValue"] > div { white-space: normal; overflow: visible; text-overflow: clip; }
+[data-testid="stAppDeployButton"], .stDeployButton { display: none; }
+.stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid #e3e7ed; }
+.stTabs [data-baseweb="tab"] { font-weight: 600; padding: 10px 16px; }
+[data-testid="stForm"] { background: #fff; border: 1px solid #e3e7ed; border-radius: 14px; padding: 18px 20px; }
+[data-testid="stPlotlyChart"] { background: #fff; border-radius: 14px; box-shadow: 0 0 0 1px #e3e7ed; overflow: hidden; }
+.stMarkdown table { border-collapse: collapse; font-size: 14px; }
+.stMarkdown th { background: #f0f3f7; text-transform: uppercase; font-size: 12px; letter-spacing: .04em; color: #5a6474; }
+.stMarkdown h2 { border-bottom: 2px solid #2457f5; padding-bottom: 4px; margin-top: 28px; }
+section[data-testid="stSidebar"] { background: #0b2545; }
+section[data-testid="stSidebar"] * { color: #e8ecf3 !important; }
+section[data-testid="stSidebar"] input { color: #0e1726 !important; }
+</style>
+<div class="app-hero"><h1>Market Entry Analyst · EU ⇄ China</h1>
+<p>Official trade data plus International Business frameworks, turned into a market entry decision.</p>
+<div class="tags"><span>Eurostat Comext</span><span>UN Comtrade</span><span>World Bank</span><span>PESTEL · CAGE · HHI · OLI</span></div></div>
+""", unsafe_allow_html=True)
 
 PRESETS = {
     "E-bikes (871160)": "871160",
@@ -114,7 +152,7 @@ def report_html(title: str, body_md: str) -> str:
 # Sidebar
 # --------------------------------------------------------------------------- #
 with st.sidebar:
-    st.title("🌍 AI Market Entry Analyst")
+    st.markdown("### Market Entry Analyst")
     st.caption("Data-driven market entry decisions for the EU and China")
     st.divider()
     st.markdown("**Live data sources**")
@@ -124,6 +162,7 @@ with st.sidebar:
         "- World Bank (macro, logistics, governance)"
     )
     st.markdown("**Frameworks**: PESTEL · CAGE · HHI · OLI entry modes")
+    st.markdown("[🌐 Live showcase site](https://onurusalan.github.io/ai-market-entry-analyst/)")
     st.divider()
     with st.expander("Optional: Claude AI narrative"):
         st.caption("The platform is fully free. If you have your own Anthropic API key, "

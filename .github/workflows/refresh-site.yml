@@ -1,6 +1,6 @@
-name: Refresh showcase site
+name: Refresh web app data
 
-# Rebuilds the GitHub Pages case studies with the latest public trade data.
+# Reruns all reports with the latest public trade data and republishes the GitHub Pages app.
 on:
   schedule:
     - cron: "0 6 1 * *"   # 06:00 UTC on the 1st of every month
@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,5 +25,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs
-          git diff --cached --quiet || git commit -m "Refresh showcase site with latest trade data"
+          git diff --cached --quiet || git commit -m "Refresh web app with latest trade data"
           git push

@@ -1,0 +1,35 @@
+/* Home page: analyzer card, stats and featured case studies. */
+(async function () {
+  Theme.init();
+  let cat;
+  try { cat = await getJSON("data/catalog.json"); } catch (e) {
+    $("#analyzer").innerHTML = '<p class="muted">Could not load the data catalogue. Please refresh.</p>';
+    return;
+  }
+
+  const form = $("#analyzer");
+  const first = cat.featured[0] || {};
+  const head = '<div><h2>Generate an entry report</h2><p class="sub">Choose a case. The report opens instantly.</p></div>';
+  buildPicker(form, cat, { p: first.hs, t: first.target, h: first.home, s: first.size }, {
+    variant: "card", onSubmit: (s) => { location.href = reportUrl(s); },
+  });
+  form.insertAdjacentHTML("afterbegin", head);
+  form.insertAdjacentHTML("beforeend",
+    `<p class="foot">${cat.report_count} pre-computed reports · refreshed monthly from live data</p>`);
+
+  $("#st-products").textContent = cat.products.length;
+  $("#st-reports").textContent = cat.report_count.toLocaleString("en");
+  $("#st-years").textContent = `${cat.years[0]}–${cat.years[1]}`;
+  $("#updated").textContent = cat.updated;
+
+  $("#case-grid").innerHTML = cat.featured.map((c) => `
+    <a class="card case" href="${reportUrl({ p: c.hs, t: c.target, h: c.home, s: c.size })}">
+      <div class="row"><span class="ico">${c.icon}</span><span class="badge ${verdictClass(c.verdict)}">${verdictText(c.verdict)}</span></div>
+      <div><div class="route">${esc(c.home_name)} → ${esc(c.target_name)}</div><h3>${esc(c.label)}</h3></div>
+      <p>${esc(c.headline)}</p>
+      <div><div class="row" style="font-size:13px;margin-bottom:6px"><span class="muted">Attractiveness</span><b>${Number(c.score).toFixed(1)}/10</b></div>
+        <div class="scorebar"><i style="width:${c.score * 10}%"></i></div></div>
+      <div class="metrics"><span>Market ${c.year}<br><b>${money(c.market, c.currency)}</b></span>
+        <span style="text-align:right">Growth (CAGR)<br><b>${signedPct(c.cagr)}</b></span></div>
+    </a>`).join("");
+})();
