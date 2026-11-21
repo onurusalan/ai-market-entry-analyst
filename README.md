@@ -19,6 +19,9 @@ Everything runs on **free public data**. No paid service is needed.
 |---|---|---|
 | 📄 | **Entry report** | Verdict, market sizing, competition, starting position, PESTEL, CAGE, tariffs, regulation checklist, risk matrix, entry mode, 90-day plan |
 | 💶 | **Tariffs & landed cost** | MFN applied tariff from WITS (UNCTAD TRAINS), FTA preferences, and an interactive landed-cost calculator (freight, duty, trade-defence duty, VAT, fees) |
+| 🎯 | **Untapped potential** | Where in the EU the home country sells below its overall extra-EU share (simplified ITC Export Potential Map logic), by member state |
+| 📅 | **Seasonality** | Monthly import pattern (Eurostat monthly data), peak months and the shipping window to be stocked for the peak |
+| 💱 | **Currency risk** | Annualised volatility and 3-year change of the home/target exchange rate from ECB reference rates; drives the risk matrix |
 | 🆚 | **Compare page** | Up to three cases side by side (e.g. EU or China first?), best value per metric highlighted, a recommendation and a shareable link |
 | 📉 | **Competitor momentum** | Which suppliers gained or lost market share over the period, and the fastest-rising challenger |
 | ⬇️ | **Data export** | Every report's numbers as CSV (Excel-ready), Markdown/JSON from the CLI, PDF from the browser |
@@ -173,6 +176,12 @@ Cookie-free page-view counting with [GoatCounter](https://www.goatcounter.com/) 
 
 **Competitive position.** The home country's rank and share among all suppliers, its share change over the period, and its unit value per kg vs the market average (premium ≥ 1.25×, value ≤ 0.8×).
 
+**Untapped potential.** If the home country supplies s% of all extra-EU imports, a member state importing X from outside the EU is expected to buy s% × X from it; untapped = max(expected − actual, 0), penetration = actual / expected. A demand-side simplification of the ITC Export Potential Map (no supply-growth or tariff terms); hubs re-export.
+
+**Seasonality.** Each month's extra-EU imports divided by its year's monthly average, averaged over three full years; peak-to-trough under 20 points is weak, under 50 moderate, otherwise strong. Shipping window = the two months before the first peak month (6-8 weeks sea freight).
+
+**Currency risk.** Monthly ECB euro reference rates, crossed where needed (e.g. KRW/CNY); annualised standard deviation of monthly log changes over 36 months: under 5% low, under 10% medium, otherwise high. Currencies the ECB does not publish (e.g. TWD, VND) are shown as not available.
+
 **CAGE distance** (Ghemawat, 2001). Cultural distance from language-family overlap. Administrative distance from single market, FTA or none, plus the governance gap. Geographic distance between capitals: below 1,500 km is low, below 5,000 km is medium. Economic distance from the GDP per capita ratio: below 1.5× is low, below 3× is medium.
 
 **Entry mode.** Rules follow transaction-cost and OLI logic. High distance, low attractiveness or small firms lead to low-commitment modes (exporting, distributors, cross-border e-commerce). Attractive markets with strong institutions and large firms lead to subsidiaries or a WFOE. Regulated sectors in China (pharma, medtech) lead to a JV or licensing. The home country's existing presence and price level refine the reasoning.
@@ -198,7 +207,7 @@ Cookie-free page-view counting with [GoatCounter](https://www.goatcounter.com/) 
 
 ## 🛠️ Tech stack
 
-Python · pandas · REST APIs (Eurostat SDMX/JSON-stat, UN Comtrade, World Bank, WITS SDMX) · Streamlit · Plotly · vanilla HTML/CSS/JavaScript · argparse CLI · pytest + coverage · ruff · mypy · GitHub Actions · GitHub Pages · optional Anthropic Claude API
+Python · pandas · REST APIs (Eurostat SDMX/JSON-stat annual + monthly, UN Comtrade, World Bank, WITS SDMX, ECB SDMX) · Streamlit · Plotly · vanilla HTML/CSS/JavaScript · argparse CLI · pytest + coverage · ruff · mypy · GitHub Actions · GitHub Pages · optional Anthropic Claude API
 
 ---
 

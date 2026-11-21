@@ -302,6 +302,14 @@ VAT_RATES = {
     "FR": 20, "GR": 24, "HR": 25, "HU": 27, "IE": 23, "IT": 22, "LT": 21, "LU": 17, "LV": 21, "MT": 18,
     "NL": 21, "PL": 23, "PT": 23, "RO": 21, "SE": 25, "SI": 22, "SK": 23, "CN": 13,
 }
+# Currency of each economy (EU members not in the euro area keep their own).
+CURRENCIES = {c: "EUR" for c in EU27} | {
+    "EU": "EUR", "PL": "PLN", "SE": "SEK", "DK": "DKK", "CZ": "CZK", "HU": "HUF", "RO": "RON",
+    "CN": "CNY", "US": "USD", "JP": "JPY", "KR": "KRW", "TW": "TWD", "VN": "VND", "IN": "INR", "GB": "GBP",
+    "CH": "CHF", "NO": "NOK", "SG": "SGD", "CA": "CAD", "AU": "AUD", "MX": "MXN", "BR": "BRL", "TR": "TRY",
+}
+MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
 # Preferential tariff note: under an FTA most originating industrial goods enter duty-free.
 FTA_DEFAULT_PREF_RATE = 0.0
 

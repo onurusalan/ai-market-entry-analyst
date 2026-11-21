@@ -72,6 +72,11 @@
       { label: "CAGE distance", val: (d) => ({ Low: 1, Medium: 2, High: 3 }[d.r.cage]), better: "low", fmt: (d) => `<span class="lvl-${esc(d.r.cage)}">${esc(d.r.cage)}</span>` },
       { label: "Your market share", val: (d) => (d.r.position.present ? d.r.position.share_pct : 0), better: "high", fmt: (d) => (d.r.position.present ? `${pct(d.r.position.share_pct)} (#${d.r.position.rank})` : "Not a supplier yet") },
       { label: "Price level vs market", fmt: (d) => (d.r.position.price_position ? `${d.r.position.price_position} (${d.r.position.price_ratio}×)` : "n/a") },
+      { label: "Currency risk", val: (d) => ({ None: 0, Low: 1, Medium: 2, High: 3 }[d.r.fx && d.r.fx.level] ?? null), better: "low",
+        fmt: (d) => (d.r.fx && d.r.fx.level ? `${d.r.fx.level}${d.r.fx.volatility_pct != null ? ` <small>(${d.r.fx.volatility_pct}% vol.)</small>` : ""}` : "n/a") },
+      { label: "Untapped potential (EU)", val: (d) => (d.r.untapped ? d.r.untapped.total_untapped_eur : null), better: "high",
+        fmt: (d) => (d.r.untapped ? money(d.r.untapped.total_untapped_eur, "EUR") : "–") },
+      { label: "Demand seasonality", fmt: (d) => (d.m.seasonality ? `${d.m.seasonality.strength} · peak ${d.m.seasonality.peak_months.join("/")}` : "–") },
       { label: "High-severity risks", val: (d) => d.r.risks.filter((x) => x.likelihood === "High" && x.impact === "High").length, better: "low", fmt: (d) => String(d.r.risks.filter((x) => x.likelihood === "High" && x.impact === "High").length) },
       { label: "Verdict robust to weights?", fmt: (d) => (d.m.sensitivity.robust ? "Yes" : "Borderline") },
     ];

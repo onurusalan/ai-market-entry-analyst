@@ -146,6 +146,39 @@ def priority_markets(c: Case) -> Lines:
     return lines + ["", "*Note: the Netherlands and Belgium also import for re-export through Rotterdam and Antwerp.*", ""]
 
 
+def untapped_section(c: Case) -> Lines:
+    u = c.untapped
+    if not u:
+        return []
+    lines = [f"### Untapped potential for {_name(c.home)} by member state", ""]
+    if not u["markets"]:
+        return lines + [f"{_name(c.home)} has no recorded extra-EU share in {u['year']}, so there is no benchmark yet: "
+                        "use the priority markets above.", ""]
+    lines += [f"{_name(c.home)} supplies {u['home_share_pct']}% of all extra-EU imports. Applying that share to each "
+              "member state's extra-EU imports gives an expected value; the gap to actual imports from "
+              f"{_name(c.home)} is untapped potential (simplified ITC Export Potential Map logic, {u['year']}).", "",
+              "| Member state | Extra-EU imports | From your country | Expected | Untapped | Penetration |",
+              "|---|---|---|---|---|---|"]
+    lines += [f"| {_name(r['member'])} | {money(r['extra_eu_imports'], 'EUR')} | {money(r['actual'], 'EUR')} | "
+              f"{money(r['expected'], 'EUR')} | **{money(r['untapped'], 'EUR')}** | "
+              f"{'n/a' if r['penetration'] is None else f'{r['penetration'] * 100:.0f}%'} |" for r in u["markets"]]
+    return lines + ["", f"Total untapped potential: **{money(u['total_untapped_eur'], 'EUR')}**. Low penetration in a large "
+                        "market is the clearest expansion target; hubs (Netherlands, Belgium) partly re-export.", ""]
+
+
+def seasonality_block(c: Case) -> Lines:
+    s = c.seasonality
+    if not s:
+        return []
+    idx = s["index"]
+    return ["### Seasonality", "",
+            f"Monthly extra-EU imports relative to the yearly average (100), {s['years'][0]}–{s['years'][-1]}:", "",
+            "| " + " | ".join(idx) + " |", "|" + "---|" * len(idx), "| " + " | ".join(f"{v:.0f}" for v in idx.values()) + " |", "",
+            f"**{s['strength']} seasonality** (peak-to-trough {s['amplitude']:.0f} points). Peak months: "
+            f"{', '.join(s['peak_months'])}; quietest: {', '.join(s['low_months'])}. With 6-8 weeks of sea freight, "
+            f"ship in **{' and '.join(s['ship_window'])}** to have stock in place for the peak.", ""]
+
+
 def pestel_section(c: Case) -> Lines:
     factors = pestel(c.target, c.sector, c.market, c.target_profile)
     return ["## 4. PESTEL Analysis", ""] + [f"- **{k}:** {val}" for k, val in factors.items()] + [""]
@@ -201,7 +234,11 @@ def tariffs_and_regulation(c: Case) -> Lines:
 
 
 def risk_section(c: Case) -> Lines:
-    lines = ["## 7. Risk Matrix", "", "| Risk | Likelihood | Impact | Mitigation |", "|---|---|---|---|"]
+    lines = ["## 7. Risk Matrix", ""]
+    if c.fx and c.fx.get("note"):
+        lines += [f"**Exchange rate (ECB reference rates):** {c.fx['note']}"
+                  + (f" Risk level: **{c.fx['level']}**." if c.fx.get("level") not in (None, "None") else ""), ""]
+    lines += ["| Risk | Likelihood | Impact | Mitigation |", "|---|---|---|---|"]
     return lines + [f"| {r['risk']} | {r['likelihood']} | {r['impact']} | {r['mitigation']} |" for r in c.risks] + [""]
 
 
@@ -233,7 +270,7 @@ def action_plan_section(c: Case) -> Lines:
 def sources(c: Case) -> Lines:
     return ["## Sources", "",
             f"- {c.market['source']}, trade data {c.market['years'][0]}-{c.latest_year}",
-            "- World Bank WITS / UNCTAD TRAINS (MFN tariffs)",
+            "- World Bank WITS / UNCTAD TRAINS (MFN tariffs); ECB euro reference exchange rates",
             "- World Bank World Development Indicators, Logistics Performance Index, Worldwide Governance Indicators",
             "- Regulatory notes: curated from official EU and Chinese sources; verify with the links in section 6",
             "- Frameworks: PESTEL; CAGE distance (Ghemawat, 2001); HHI bands (US DOJ/FTC 2023); entry-mode logic "
@@ -241,7 +278,8 @@ def sources(c: Case) -> Lines:
 
 
 SECTIONS: list[Callable[[Case], Lines]] = [
-    header, executive_summary, market_size, competition, competitor_momentum, starting_position, priority_markets, pestel_section,
+    header, executive_summary, market_size, seasonality_block, competition, competitor_momentum, starting_position,
+    priority_markets, untapped_section, pestel_section,
     cage_section, tariffs_and_regulation, risk_section, entry_mode_section, score_section, action_plan_section, sources,
 ]
 

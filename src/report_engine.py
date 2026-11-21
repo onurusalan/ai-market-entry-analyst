@@ -144,7 +144,7 @@ def pestel(target: str, sector: str, market: dict, target_p: dict | None) -> dic
 
 
 def risk_matrix(target: str, home: str, sector: str, market: dict, score: dict,
-                cage: dict, hs_code: str, tariff: dict | None = None) -> list[dict]:
+                cage: dict, hs_code: str, tariff: dict | None = None, fx: dict | None = None) -> list[dict]:
     risks = []
     rate = (tariff or {}).get("applicable_pct")
     if rate is not None and rate >= 10:
@@ -180,8 +180,13 @@ def risk_matrix(target: str, home: str, sector: str, market: dict, score: dict,
     if (market.get("data_quality") or {}).get("confidence") == "Low":
         risks.append({"risk": "Thin or volatile trade data: market size and growth are uncertain", "likelihood": "Medium",
                       "impact": "Medium", "mitigation": "Validate demand with distributor interviews and a small pilot before committing budget."})
-    risks.append({"risk": "Currency volatility (EUR/CNY/USD)", "likelihood": "Medium", "impact": "Medium",
-                  "mitigation": "Price in home currency where possible; hedge large contracts with forwards."})
+    level = (fx or {}).get("level")
+    if level != "None":  # "None" = same currency, so no exchange-rate risk
+        pair = f"{fx['home_currency']}/{fx['target_currency']}" if fx and fx.get("home_currency") else "EUR/CNY/USD"
+        detail = f", {fx['volatility_pct']}% annualised volatility" if fx and fx.get("volatility_pct") is not None else ""
+        risks.append({"risk": f"Currency volatility ({pair}{detail})",
+                      "likelihood": level if level in ("Low", "Medium", "High") else "Medium", "impact": "Medium",
+                      "mitigation": "Price in home currency where possible; hedge large contracts with forwards."})
     return risks
 
 
@@ -381,6 +386,9 @@ class Case:
     cost: dict
     growth: float | None
     product: str
+    untapped: dict | None = None
+    seasonality: dict | None = None
+    fx: dict | None = None
 
     @property
     def currency(self) -> str:
@@ -411,7 +419,8 @@ class Case:
             "risks": self.risks, "entry_mode": self.mode, "verdict": self.verdict, "ranking": self.ranking,
             "sector": self.sector, "tariff": self.tariff, "landed_cost": self.cost, "vat_country": self.vat_country,
             "position": self.position, "sensitivity": self.sensitivity, "data_quality": self.data_quality,
-            "kb": self.kb_info, "growth_pct": self.growth,
+            "kb": self.kb_info, "growth_pct": self.growth, "untapped": self.untapped,
+            "seasonality": self.seasonality, "fx": self.fx,
         }
 
 
@@ -457,7 +466,8 @@ def analyse_case(hs_code: str, target: str, home: str, company: str = "",
     pref = analysis.partner_tariff_for(target, hs_code, home, ly) if needs_partner_lookup(target, home) else None
     tariff = tariff_position(target, home, hs_code, analysis.tariff_for(target, hs_code, ly), pref)
     position = competitive_position(home, market)
-    risks = risk_matrix(target, home, sector, market, score, cage, hs_code, tariff)
+    fx = analysis.safe(analysis.fx_risk, home, target)
+    risks = risk_matrix(target, home, sector, market, score, cage, hs_code, tariff, fx)
     mode = entry_mode(target, sector, company_size, score, cage, market, position)
     v, v_reason = verdict(score, risks)
     ranking = analysis.rank_eu_members(hs_code, start_year, end_year) if target == "EU" else []
@@ -476,6 +486,9 @@ def analyse_case(hs_code: str, target: str, home: str, company: str = "",
         data_quality=market.get("data_quality") or {"confidence": "High", "flags": []},
         kb_info=kb.kb_status(), ranking=ranking, vat_country=vat_country, cost=cost, growth=growth,
         product=product_label or market.get("product_name") or f"HS {hs_code}",
+        untapped=analysis.safe(analysis.untapped_potential, hs_code, ly, home) if target == "EU" else None,
+        seasonality=analysis.safe(analysis.seasonality, hs_code, ly) if target == "EU" else None,
+        fx=fx,
     )
 
 

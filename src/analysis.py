@@ -496,3 +496,124 @@ def partner_tariff_for(target: str, hs_code: str, home: str, latest_year: int) -
         return ds.partner_tariff(target, hs_code, home, latest_year)
     except Exception:
         return None
+
+
+
+# --------------------------------------------------------------------------- #
+# Untapped export potential, seasonality and currency risk
+# --------------------------------------------------------------------------- #
+def untapped_potential(hs_code: str, year: int, home: str, n: int = 8) -> dict | None:
+    """
+    Where in the EU does the home country sell less than its overall position suggests?
+
+    Simplified, demand-side version of the ITC Export Potential Map logic: if the home country
+    supplies s% of all extra-EU imports of the product, a member state importing X from outside
+    the EU would "expect" s% × X from it. Untapped potential = max(expected − actual, 0);
+    penetration = actual / expected. Hubs (NL, BE) re-export, so read their figures with care.
+    """
+    if home in ds.EU27:
+        return None
+    extra = ds.eu_member_imports_from(hs_code, year, "EXT_EU27_2020")
+    if extra.empty:
+        return None
+    e = extra.set_index("reporter")["value_eur"].astype(float)
+    by_home = ds.eu_member_imports_from(hs_code, year, home)
+    act = (by_home.set_index("reporter")["value_eur"].astype(float) if not by_home.empty
+           else pd.Series(dtype=float)).reindex(e.index).fillna(0.0)
+    total_e = float(e.sum())
+    if total_e <= 0:
+        return None
+    share = float(act.sum()) / total_e
+    rows = []
+    for m in e.index:
+        expected = share * float(e[m])
+        actual = float(act[m])
+        rows.append({"member": m, "extra_eu_imports": round(float(e[m]), 0), "actual": round(actual, 0),
+                     "expected": round(expected, 0), "untapped": round(max(expected - actual, 0.0), 0),
+                     "penetration": round(actual / expected, 2) if expected else None})
+    rows.sort(key=lambda r: r["untapped"], reverse=True)
+    return {"year": year, "home_share_pct": round(share * 100, 2),
+            "total_untapped_eur": round(sum(r["untapped"] for r in rows), 0),
+            "markets": [r for r in rows if r["untapped"] > 0][:n]}
+
+
+def seasonality(hs_code: str, end_year: int, years: int = 3) -> dict | None:
+    """
+    Monthly seasonal pattern of extra-EU imports: each month's value relative to its year's
+    monthly average (100 = average), averaged over the last `years` years.
+    """
+    from . import knowledge as kb
+
+    s = ds.eu_monthly_extra_imports(hs_code, list(range(end_year - years + 1, end_year + 1)))
+    if len(s) < 24:
+        return None
+    df = pd.DataFrame({"value": s.values}, index=s.index)
+    df["year"] = [p[:4] for p in df.index]
+    df["month"] = [int(p[5:7]) for p in df.index]
+    df = df[df.groupby("year")["value"].transform("count") == 12]
+    if df.empty:
+        return None
+    df["rel"] = df["value"] / df.groupby("year")["value"].transform("mean") * 100
+    idx = df.groupby("month")["rel"].mean().round(1)
+    order = idx.sort_values(ascending=False)
+    peaks = [int(m) for m in order.index[:3]]
+    amplitude = float(idx.max() - idx.min())
+    strength = "Weak" if amplitude < 20 else ("Moderate" if amplitude < 50 else "Strong")
+    first_peak = None
+    if peaks:  # start of the peak block that contains the strongest month
+        prev = lambda m: ((m - 2) % 12) + 1  # noqa: E731
+        first_peak = peaks[0]
+        while prev(first_peak) in peaks and prev(first_peak) != peaks[0]:
+            first_peak = prev(first_peak)
+    ship = [((first_peak - k - 1) % 12) + 1 for k in (2, 1)] if first_peak else []
+    if first_peak:
+        peaks = sorted(peaks, key=lambda m: (m - first_peak) % 12)  # calendar order, starting at the first peak month
+    return {"years": sorted(df["year"].unique().tolist()), "index": {kb.MONTHS[m - 1]: float(v) for m, v in idx.items()},
+            "peak_months": [kb.MONTHS[m - 1] for m in peaks], "low_months": [kb.MONTHS[int(m) - 1] for m in order.index[-3:]],
+            "amplitude": round(amplitude, 1), "strength": strength, "ship_window": [kb.MONTHS[m - 1] for m in ship]}
+
+
+def fx_risk(home: str, target: str, months: int = 36) -> dict:
+    """
+    Currency risk between the home and the target market from ECB monthly reference rates:
+    annualised volatility of monthly changes and the change over the window.
+    """
+    from datetime import date as _date
+
+    from . import knowledge as kb
+
+    hc = kb.CURRENCIES.get(home)
+    tc = kb.CURRENCIES.get("CN" if target == "CN" else target, "EUR")
+    base = {"home_currency": hc, "target_currency": tc}
+    if not hc:
+        return {**base, "level": None, "note": "Home currency unknown."}
+    if hc == tc:
+        return {**base, "level": "None", "note": f"Same currency ({hc}): no exchange-rate risk."}
+    rates = ds.ecb_monthly_rates([hc, tc], f"{_date.today().year - 4}-01")
+    other = rates.get(tc if hc == "EUR" else hc) or {}
+    h = {p: 1.0 for p in other} if hc == "EUR" else rates.get(hc)   # ECB rates are units per euro
+    t = {p: 1.0 for p in other} if tc == "EUR" else rates.get(tc)
+    if not h or not t:
+        missing = hc if not h else tc
+        return {**base, "level": None, "note": f"The ECB does not publish {missing} reference rates."}
+    periods = sorted(set(h) & set(t))[-(months + 1):]
+    if len(periods) < 13:
+        return {**base, "level": None, "note": "Not enough exchange-rate history."}
+    cross = [h[p] / t[p] for p in periods]  # home-currency units per target-currency unit
+    changes = [math.log(cross[i] / cross[i - 1]) for i in range(1, len(cross))]
+    mean = sum(changes) / len(changes)
+    vol = math.sqrt(sum((x - mean) ** 2 for x in changes) / (len(changes) - 1)) * math.sqrt(12) * 100
+    change = (cross[-1] / cross[0] - 1) * 100
+    level = "Low" if vol < 5 else ("Medium" if vol < 10 else "High")
+    return {**base, "level": level, "volatility_pct": round(vol, 1), "change_pct": round(change, 1),
+            "window": [periods[0], periods[-1]],
+            "note": f"{hc} per {tc}: {'+' if change >= 0 else ''}{change:.1f}% over {periods[0]}–{periods[-1]} "
+                    f"({'home currency weaker' if change > 0 else 'home currency stronger'}), annualised volatility {vol:.1f}%."}
+
+
+def safe(fn, *args):
+    """Run an optional analysis; enrichment data must never break a report."""
+    try:
+        return fn(*args)
+    except Exception:
+        return None

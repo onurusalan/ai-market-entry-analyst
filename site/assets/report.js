@@ -74,6 +74,8 @@
       <div class="card chart-card"><h3>Who supplies the market</h3><p class="cap">Top suppliers' share of imports, ${m.latest_year}. ${esc(r.home_name)} highlighted.</p><div class="plot" id="c-sup"></div></div>
       <div class="card chart-card"><h3>${esc(m.share_label)}</h3><p class="cap">Share of total imports, %</p><div class="plot" id="c-share"></div></div>
       ${(m.momentum.gainers.length || m.momentum.losers.length) ? `<div class="card chart-card"><h3>Who is gaining share</h3><p class="cap">Change in market share since ${m.years[0]}, percentage points (suppliers with ≥1% share)</p><div class="plot" id="c-mom"></div></div>` : ""}
+      ${m.seasonality ? `<div class="card chart-card"><h3>When does demand peak?</h3><p class="cap">${m.seasonality.strength} seasonality · monthly imports vs yearly average (100), ${m.seasonality.years[0]}–${m.seasonality.years[m.seasonality.years.length - 1]} · ship in ${m.seasonality.ship_window.join(" and ")} for the ${m.seasonality.peak_months.join("/")} peak</p><div class="plot" id="c-season"></div></div>` : ""}
+      ${r.untapped && r.untapped.markets.length ? `<div class="card chart-card"><h3>Untapped potential for ${esc(r.home_name)}</h3><p class="cap">${money(r.untapped.total_untapped_eur, "EUR")} in total: where ${esc(r.home_name)} sells below its ${r.untapped.home_share_pct}% extra-EU share (ITC-style benchmark, ${r.untapped.year})</p><div class="plot" id="c-untap"></div></div>` : ""}
       <div class="card chart-card"><h3>Score breakdown</h3><p class="cap">Sub-scores out of 10, with weights</p><div class="plot" id="c-score"></div></div>
       <div class="card chart-card"><h3>Does the verdict depend on the weights?</h3><p class="cap">${m.sensitivity.robust
         ? `Robust: ${m.sensitivity.min}–${m.sensitivity.max} across six weighting schemes, same verdict band`
@@ -173,6 +175,9 @@
     add("market", "growth_trend_pct", m.growth, `confidence ${m.quality.confidence}`); add("market", "hhi", m.hhi, m.hhi_label);
     m.suppliers.forEach((s) => add("supplier", s.name, s.share, `value ${s.value}; unit value/kg ${s.uv ?? ""}`));
     [...m.momentum.gainers, ...m.momentum.losers].forEach((x) => add("momentum_pp", x.name, x.change_pp, `${x.share_first}% -> ${x.share_last}%`));
+    if (m.seasonality) Object.entries(m.seasonality.index).forEach(([k, val]) => add("seasonality_index", k, val, "100 = yearly average"));
+    if (r.untapped) r.untapped.markets.forEach((x) => add("untapped_eur", x.name, x.untapped, `actual ${x.actual}; expected ${x.expected}`));
+    if (r.fx) add("fx_risk", r.fx.level, r.fx.volatility_pct, r.fx.note);
     add("tariff", "mfn_pct", r.tariff.mfn, r.tariff.mfn_year); add("tariff", "applicable_pct", r.tariff.applicable, r.tariff.basis);
     Object.entries(r.cost).forEach(([k, v]) => add("landed_cost_assumption", k, v, ""));
     r.risks.forEach((x) => add("risk", x.risk, x.likelihood, `impact ${x.impact}`));
@@ -197,6 +202,8 @@
       ["Unit value", `${uv(p.unit_value_per_kg)} <small>vs ${uv(m.unit_value)} avg</small>`],
       ["Applicable duty", r.tariff.applicable != null ? `${r.tariff.applicable}%` : "n/a"],
       ["Trade agreement", r.tariff.fta ? esc(r.tariff.fta) : "None"],
+      ["Currency risk", r.fx && r.fx.level ? (r.fx.level === "None" ? "None <small>(same currency)</small>"
+        : `<span class="lvl-${r.fx.level}">${r.fx.level}</span> <small>${r.fx.volatility_pct}% vol. ${r.fx.home_currency}/${r.fx.target_currency}</small>`) : "<small>n/a (no ECB rate)</small>"],
     ];
     return items.map(([k, v]) => `<div><span>${k}</span><b>${v}</b></div>`).join("");
   }
@@ -252,6 +259,25 @@
         textposition: "outside", cliponaxis: false, hovertemplate: "%{y}: %{x:.1f}/10<extra></extra>" },
     ], L({ barmode: "overlay", margin: { t: 8, r: 36, b: 30, l: 140 }, xaxis: { ...base.xaxis, range: [0, 10.5] }, yaxis: { ...base.yaxis, gridcolor: "rgba(0,0,0,0)", automargin: true } }), cfg);
 
+    if (document.getElementById("c-season")) {
+      const sz = m.seasonality, months = Object.keys(sz.index);
+      Plotly.react("c-season", [{
+        type: "bar", x: months, y: months.map((k) => sz.index[k]),
+        marker: { color: months.map((k) => (sz.peak_months.includes(k) ? C.accent : sz.ship_window.includes(k) ? v("--warn") : C.base)) },
+        hovertemplate: "%{x}: %{y:.0f} (100 = average)<extra></extra>",
+      }], L({ xaxis: { ...base.xaxis, type: "category", gridcolor: "rgba(0,0,0,0)" }, yaxis: { ...base.yaxis, rangemode: "tozero" },
+        shapes: [{ type: "line", x0: -0.5, x1: 11.5, y0: 100, y1: 100, line: { color: C.text, width: 1, dash: "dot" } }] }), cfg);
+    }
+    if (document.getElementById("c-untap")) {
+      const u = r.untapped.markets.slice().reverse();
+      Plotly.react("c-untap", [{
+        type: "bar", orientation: "h", y: u.map((x) => x.name), x: u.map((x) => x.untapped / 1e6), marker: { color: C.accent },
+        text: u.map((x) => (x.penetration == null ? "" : `${Math.round(x.penetration * 100)}% penetration`)), textposition: "outside", cliponaxis: false,
+        customdata: u.map((x) => `actual ${money(x.actual, "EUR")} vs expected ${money(x.expected, "EUR")}`),
+        hovertemplate: "%{y}: €%{x:,.1f}m untapped<br>%{customdata}<extra></extra>",
+      }], L({ margin: { t: 8, r: 150, b: 30, l: 110 }, xaxis: { ...base.xaxis, tickprefix: "€", ticksuffix: "m" },
+        yaxis: { ...base.yaxis, gridcolor: "rgba(0,0,0,0)", automargin: true } }), cfg);
+    }
     if (document.getElementById("c-mom")) {
       const mv = [...m.momentum.gainers, ...m.momentum.losers].sort((a, b) => a.change_pp - b.change_pp);
       Plotly.react("c-mom", [{
@@ -277,6 +303,8 @@
       "c-share": `Line chart: ${m.share_label} by year.`,
       "c-score": `Score components: ${Object.entries(m.score.sub_scores).map(([k, x]) => `${k.replace(/_/g, " ")} ${x}`).join(", ")}.`,
       "c-mom": `Share change since ${m.years[0]}: ${[...m.momentum.gainers, ...m.momentum.losers].slice(0, 4).map((x) => `${x.name} ${x.change_pp > 0 ? "+" : ""}${x.change_pp} pp`).join(", ")}.`,
+      "c-season": m.seasonality ? `Monthly seasonality; peaks in ${m.seasonality.peak_months.join(", ")}, ship in ${m.seasonality.ship_window.join(" and ")}.` : "",
+      "c-untap": r.untapped && r.untapped.markets.length ? `Untapped potential by member state; largest: ${r.untapped.markets.slice(0, 3).map((x) => x.name).join(", ")}.` : "",
       "c-sens": `Scores under six weighting schemes range from ${m.sensitivity.min} to ${m.sensitivity.max}.`,
       "c-map": m.ranking.length ? `Map of EU member states by entry score; top three: ${m.ranking.slice(0, 3).map((x) => x.name).join(", ")}.` : "",
     };

@@ -72,7 +72,7 @@ def memoize(fn):
 
 
 for _fn in ("analyze_eu_market", "analyze_china_market", "profile_for", "rank_eu_members", "tariff_for",
-            "partner_tariff_for"):
+            "partner_tariff_for", "untapped_potential", "seasonality", "fx_risk"):
     setattr(analysis, _fn, memoize(getattr(analysis, _fn)))
 
 
@@ -101,6 +101,7 @@ def market_payload(hs: str, target: str, data: dict) -> dict:
         "share_label": "China's share of extra-EU imports" if target != "CN" else "EU-27 share of China's imports",
         "share": {str(k): v for k, v in (m.get(share_key) or {}).items()},
         "momentum": m.get("momentum") or {"gainers": [], "losers": []},
+        "seasonality": data.get("seasonality"),
         "score": data["score"], "sensitivity": data["sensitivity"],
         "ranking": [{"rank": r["rank"], "code": r["member"], "name": name(r["member"]), "iso3": EU_ISO3[r["member"]],
                      "score": r["score_0_10"], "imports": r["imports_eur"], "share": r["share_of_eu_pct"],
@@ -123,6 +124,10 @@ def report_payload(rep, home: str, size: str) -> dict:
                    "trade_defence": bool(d["tariff"].get("trade_defence"))},
         "cost": d["landed_cost"]["assumptions"] | {"vat_country": name(d["vat_country"])},
         "position": d["position"],
+        "fx": {k: v for k, v in (d.get("fx") or {}).items() if k in ("level", "volatility_pct", "change_pct", "note",
+                                                                       "home_currency", "target_currency")},
+        "untapped": ({**d["untapped"], "markets": [{**x, "name": name(x["member"])} for x in d["untapped"]["markets"]]}
+                     if d.get("untapped") else None),
         "html": md.markdown(body, extensions=["tables"]),
     }
 

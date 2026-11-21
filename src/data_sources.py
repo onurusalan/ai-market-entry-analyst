@@ -114,6 +114,9 @@ def _cached_get_json(url: str, params: dict | list | None = None, timeout: int =
                 path.write_text(json.dumps({"__not_found__": True}))  # remember empty answers too
                 raise NotFound(f"No data at {url}")
             resp.raise_for_status()
+            if not getattr(resp, "content", b"x").strip():  # some APIs answer 200 with an empty body for "no data"
+                path.write_text(json.dumps({"__not_found__": True}))
+                raise NotFound(f"Empty answer from {url}")
             data = resp.json()
             path.write_text(json.dumps(data))
             return data
@@ -476,3 +479,43 @@ def partner_tariff(target: str, hs_code: str, partner_iso2: str, latest_year: in
             return {**parsed, "year": year, "partner": partner_iso2,
                     "source": "World Bank WITS / UNCTAD TRAINS (partner-specific applied rate)"}
     return None
+
+
+# --------------------------------------------------------------------------- #
+# Eurostat Comext monthly: seasonality of extra-EU imports
+# --------------------------------------------------------------------------- #
+def eu_monthly_extra_imports(hs_code: str, years: list[int]) -> pd.Series:
+    """Monthly extra-EU imports (EUR) of one product, indexed by 'YYYY-MM'."""
+    params = [
+        ("format", "JSON"), ("lang", "en"), ("freq", "M"), ("reporter", "EU27_2020"),
+        ("partner", "EXT_EU27_2020"), ("product", hs_code), ("flow", "1"), ("indicators", "VALUE_IN_EUROS"),
+    ]
+    params += [("time", f"{y}-{m:02d}") for y in years for m in range(1, 13)]
+    df = _parse_jsonstat(_cached_get_json(EUROSTAT_URL, params))
+    if df.empty or "time" not in df:
+        return pd.Series(dtype=float)
+    return df.set_index("time")["value"].astype(float).sort_index()
+
+
+# --------------------------------------------------------------------------- #
+# ECB: monthly euro reference exchange rates
+# --------------------------------------------------------------------------- #
+ECB_EXR_URL = "https://data-api.ecb.europa.eu/service/data/EXR/M.{currencies}.EUR.SP00.A"
+
+
+def ecb_monthly_rates(currencies: list[str], start: str) -> dict[str, dict[str, float]]:
+    """
+    Monthly average foreign-currency units per euro from the ECB, e.g. {"CNY": {"2024-01": 7.8, ...}}.
+    Currencies the ECB does not publish are simply missing from the result.
+    """
+    out: dict[str, dict[str, float]] = {}
+    for cur in sorted({c for c in currencies if c != "EUR"}):  # one call each: a missing currency can't break the others
+        try:
+            data = _cached_get_json(ECB_EXR_URL.format(currencies=cur),
+                                    {"format": "jsondata", "startPeriod": start, "detail": "dataonly"}, timeout=60)
+            periods = [v["id"] for v in data["structure"]["dimensions"]["observation"][0]["values"]]
+            series = next(iter(data["dataSets"][0]["series"].values()))
+        except (RuntimeError, KeyError, IndexError, TypeError, StopIteration):
+            continue
+        out[cur] = {periods[int(i)]: float(v[0]) for i, v in series["observations"].items() if v and v[0] is not None}
+    return out

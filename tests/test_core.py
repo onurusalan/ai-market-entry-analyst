@@ -103,6 +103,8 @@ def _mock_report(monkeypatch):
     monkeypatch.setattr(analysis, "analyze_china_market", lambda *a, **k: market)
     monkeypatch.setattr(analysis, "profile_for", lambda iso: profiles.get(iso))
     monkeypatch.setattr(analysis, "partner_tariff_for", lambda *a, **k: None)
+    monkeypatch.setattr(analysis, "fx_risk", lambda home, target: {"home_currency": "EUR", "target_currency": "CNY",
+                                                                   "level": "Low", "volatility_pct": 4.9, "note": "test"})
     monkeypatch.setattr(analysis, "tariff_for", lambda *a, **k: {"rate_pct": 5.0, "min_pct": 5.0, "max_pct": 5.0,
                                                                   "tariff_lines": 1, "year": 2023, "source": "test"})
 
@@ -351,7 +353,7 @@ def test_markdown_sections_render_in_order(monkeypatch):
     md = _mock_report(monkeypatch).markdown
     heads = [line for line in md.splitlines() if line.startswith("## ")]
     assert heads[0] == "## 1. Executive Summary" and heads[-1] == "## Sources" and len(heads) == 11
-    assert len(report_markdown.SECTIONS) == 15
+    assert len(report_markdown.SECTIONS) == 17
 
 
 # ---------------------------------------------------------------- HTTP cache, retries and parsers (fake network)
@@ -466,3 +468,66 @@ def test_supplier_momentum_gainers_and_losers():
     assert [r["partner"] for r in mom["gainers"]] == ["CN", "VN"]
     assert mom["losers"][0]["partner"] == "TW" and mom["losers"][0]["change_pp"] == -8.0
     assert all(r["partner"] != "XX" for r in mom["gainers"] + mom["losers"])   # below 1% share
+
+
+
+# ---------------------------------------------------------------- untapped potential, seasonality, FX risk
+def test_untapped_potential_benchmarks_member_states(monkeypatch):
+    extra = pd.DataFrame({"reporter": ["DE", "FR", "PL"], "value_eur": [600.0, 300.0, 100.0]})
+    home = pd.DataFrame({"reporter": ["DE", "FR"], "value_eur": [150.0, 50.0]})
+    monkeypatch.setattr(ds, "eu_member_imports_from",
+                        lambda hs, year, partner: extra if partner == "EXT_EU27_2020" else home)
+    u = analysis.untapped_potential("871160", 2024, "TW")
+    assert u["home_share_pct"] == 20.0                       # 200 of 1,000
+    by = {r["member"]: r for r in u["markets"]}
+    assert by["PL"]["untapped"] == 20 and by["PL"]["penetration"] == 0.0
+    assert by["FR"]["untapped"] == 10 and "DE" not in by     # Germany already above its benchmark
+    assert analysis.untapped_potential("871160", 2024, "DE") is None   # EU members are not extra-EU suppliers
+
+
+def test_seasonality_finds_peaks_and_shipping_window(monkeypatch):
+    vals = {}
+    for y in (2022, 2023, 2024):
+        for m in range(1, 13):
+            vals[f"{y}-{m:02d}"] = 200.0 if m in (5, 6, 7) else 100.0
+    monkeypatch.setattr(ds, "eu_monthly_extra_imports", lambda hs, years: pd.Series(vals))
+    s = analysis.seasonality("871160", 2024)
+    assert set(s["peak_months"]) == {"May", "Jun", "Jul"} and s["strength"] == "Strong"
+    assert s["ship_window"] == ["Mar", "Apr"]
+
+
+def test_fx_risk_levels(monkeypatch):
+    stable = {f"2024-{m:02d}": 7.8 for m in range(1, 13)} | {f"2025-{m:02d}": 7.8 for m in range(1, 13)}
+    swing = {p: (7.0 if i % 2 else 8.5) for i, p in enumerate(sorted(stable))}
+    monkeypatch.setattr(ds, "ecb_monthly_rates", lambda cur, start: {"CNY": stable, "JPY": swing})
+    assert analysis.fx_risk("CN", "EU")["level"] == "Low"
+    assert analysis.fx_risk("JP", "EU")["level"] == "High"
+    assert analysis.fx_risk("DE", "EU")["level"] == "None"          # same currency
+    assert analysis.fx_risk("VN", "EU")["level"] is None             # not published by the ECB
+
+
+def test_currency_risk_follows_fx_level():
+    base = dict(target="EU", home="CN", sector="consumer", market={"hhi": 500}, score={"sub_scores": {}},
+                cage={"dimensions": {"Geographic": ("Low", ""), "Cultural": ("Low", "")}}, hs_code="940360")
+    same = report_engine.risk_matrix(**base, fx={"level": "None"})
+    assert not any("Currency" in r["risk"] for r in same)
+    high = report_engine.risk_matrix(**base, fx={"level": "High", "home_currency": "JPY", "target_currency": "EUR",
+                                                 "volatility_pct": 12.0})
+    cur = next(r for r in high if "Currency" in r["risk"])
+    assert cur["likelihood"] == "High" and "12.0%" in cur["risk"]
+
+
+def test_http_empty_body_is_not_found(monkeypatch, tmp_path):
+    resp = _FakeResp(200, None)
+    resp.content = b""
+    _fake_http(monkeypatch, tmp_path, [resp])
+    with pytest.raises(ds.NotFound):
+        ds._cached_get_json("https://x.test/empty")
+
+
+def test_seasonality_peak_block_starts_before_strongest_month(monkeypatch):
+    level = {3: 150.0, 4: 200.0, 5: 160.0}                 # strongest in April, block Mar-May
+    vals = {f"{y}-{m:02d}": level.get(m, 100.0) for y in (2022, 2023, 2024) for m in range(1, 13)}
+    monkeypatch.setattr(ds, "eu_monthly_extra_imports", lambda hs, years: pd.Series(vals))
+    s = analysis.seasonality("841861", 2024)
+    assert s["peak_months"] == ["Mar", "Apr", "May"] and s["ship_window"] == ["Jan", "Feb"]
