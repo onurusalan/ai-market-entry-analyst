@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import json
+import logging
 import os
 import shutil
 import sys
@@ -273,6 +274,7 @@ def copy_front_end(plotly_version: str) -> None:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
     shutil.rmtree(DATA, ignore_errors=True)
     catalog = build_data()
     if len(catalog["available"]) < MIN_MARKETS:

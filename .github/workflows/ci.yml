@@ -13,8 +13,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - run: pip install -r requirements.txt -r requirements-dev.txt
       - name: Lint
         run: ruff check .
-      - name: Tests
-        run: pytest -q
+      - name: Type check
+        run: mypy
+      - name: Tests with coverage (fails under 80%)
+        run: pytest --cov --cov-report=term
+      - name: CLI smoke test
+        run: market-entry --help

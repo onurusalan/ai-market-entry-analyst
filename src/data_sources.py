@@ -16,12 +16,15 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import time
 from pathlib import Path
 
 import pandas as pd
 import requests
+
+log = logging.getLogger(__name__)
 
 CACHE_DIR = Path(__file__).resolve().parent.parent / "data" / "cache"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
@@ -69,6 +72,21 @@ def _is_cached(url: str, params) -> bool:
     return path.exists() and time.time() - path.stat().st_mtime < CACHE_TTL_SECONDS
 
 
+_session: requests.Session | None = None
+
+
+def _http() -> requests.Session:
+    """One pooled HTTP session for all sources (keeps connections alive across the many small calls)."""
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=8, pool_maxsize=16)
+        _session.mount("https://", adapter)
+        _session.mount("http://", adapter)
+        _session.headers["User-Agent"] = "market-entry-analyst/1.0 (open-source research tool)"
+    return _session
+
+
 class NotFound(RuntimeError):
     """The source answered but has no data for this query (HTTP 404)."""
 
@@ -86,8 +104,10 @@ def _cached_get_json(url: str, params: dict | list | None = None, timeout: int =
     last_error = None
     for attempt in range(5):
         try:
-            resp = requests.get(url, params=params, headers=headers, timeout=timeout)
+            log.info("GET %s", url)
+            resp = _http().get(url, params=params, headers=headers, timeout=timeout)
             if resp.status_code == 429:  # rate limited (Comtrade preview: ~1 call / 2 s)
+                log.warning("rate limited by %s, retrying (attempt %d)", url, attempt + 1)
                 time.sleep(3 * (attempt + 1))
                 continue
             if resp.status_code == 404:
@@ -100,6 +120,7 @@ def _cached_get_json(url: str, params: dict | list | None = None, timeout: int =
         except NotFound:
             raise
         except (requests.RequestException, ValueError) as exc:
+            log.warning("request to %s failed (attempt %d): %s", url, attempt + 1, exc)
             last_error = exc
             time.sleep(1.5 * (attempt + 1))
     raise RuntimeError(f"Request failed for {url}: {last_error}")
@@ -246,7 +267,7 @@ def _comtrade_rows(params: dict, years: list[int]) -> list[dict]:
         )
         return data.get("data") or []
 
-    rows = []
+    rows: list[dict] = []
     for i, year in enumerate(years):
         query = {**params, "period": year}
         if i and not _is_cached(COMTRADE_URL, query):

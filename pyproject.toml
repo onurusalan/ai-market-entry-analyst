@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "market-entry-analyst"
+version = "1.0.0"
+description = "Market entry decisions for the EU and Chinese markets from official trade data (Eurostat, UN Comtrade, World Bank, WITS)."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Onur Usalan" }]
+dependencies = [
+    "pandas>=2.2",
+    "requests>=2.32",
+    "plotly>=5.24",
+    "markdown>=3.7",
+    "python-dotenv>=1.0",
+]
+
+[project.optional-dependencies]
+app = ["streamlit>=1.40"]
+ai = ["anthropic>=2.12.0"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.6", "mypy>=1.11", "types-requests", "types-Markdown"]
+
+[project.scripts]
+market-entry = "src.cli:main"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.coverage.run]
+source = ["src", "scripts"]
+omit = ["src/agent.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 80
+
+[tool.ruff]
+line-length = 130
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = ["E501", "B008"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true

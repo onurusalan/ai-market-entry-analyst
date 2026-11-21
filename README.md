@@ -82,7 +82,9 @@ Reading: the ranking is a good guide to **where demand volume will appear**, but
 └──────────────────────────────┬───────────────────────────────────┘
                                ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│ Decision layer: src/report_engine.py + src/knowledge.py          │
+│ Decision layer: src/report_engine.py (analyse_case → Case)       │
+│  rendered by src/report_markdown.py, one function per section    │
+│  knowledge base: src/knowledge.py                                │
 │  PESTEL · CAGE · tariffs · landed cost · competitive position    │
 │  risk matrix · entry-mode rules · 90-day plan                    │
 │  curated regulation knowledge base with sources and review date  │
@@ -103,15 +105,25 @@ Reading: the ranking is a good guide to **where demand volume will appear**, but
 git clone https://github.com/onurusalan/ai-market-entry-analyst.git
 cd ai-market-entry-analyst
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt -r requirements-dev.txt   # installs the package in editable mode
 streamlit run app.py
 ```
 
-Other commands:
+Command-line interface (installed as `market-entry`, or `python -m src.cli`):
 
 ```bash
-pytest -q                       # offline tests (recorded API answers, no network)
+market-entry report --hs 871160 --target EU --home TW --size medium -o ebikes.md
+market-entry report --hs 220421 --target CN --home IT --json      # machine-readable output
+market-entry rank --hs 870380 --top 10                            # EU-27 member-state ranking
+market-entry tariff --hs 850760 --target CN --home KR             # MFN vs preferential duty
+```
+
+Developer commands:
+
+```bash
+pytest --cov                    # offline tests (fake network, recorded API answers); fails under 80% coverage
 ruff check .                    # lint
+mypy                            # static type check of src/
 python scripts/build_site.py    # rerun all 480 reports and rebuild the web app into docs/
 ```
 
@@ -183,7 +195,7 @@ Cookie-free page-view counting with [GoatCounter](https://www.goatcounter.com/) 
 
 ## 🛠️ Tech stack
 
-Python · pandas · REST APIs (Eurostat SDMX/JSON-stat, UN Comtrade, World Bank, WITS SDMX) · Streamlit · Plotly · vanilla HTML/CSS/JavaScript · pytest · ruff · GitHub Actions · GitHub Pages · optional Anthropic Claude API
+Python · pandas · REST APIs (Eurostat SDMX/JSON-stat, UN Comtrade, World Bank, WITS SDMX) · Streamlit · Plotly · vanilla HTML/CSS/JavaScript · argparse CLI · pytest + coverage · ruff · mypy · GitHub Actions · GitHub Pages · optional Anthropic Claude API
 
 ---
 

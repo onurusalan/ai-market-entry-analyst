@@ -31,7 +31,7 @@ def hhi_label(value: float) -> str:
     return "Highly concentrated"
 
 
-def cagr(first: float, last: float, years: int) -> float | None:
+def cagr(first: float | None, last: float | None, years: int) -> float | None:
     if not first or first <= 0 or years <= 0 or last is None or last <= 0:
         return None
     return round(((last / first) ** (1 / years) - 1) * 100, 2)
@@ -298,9 +298,9 @@ def attractiveness_score(market: dict, profile: dict | None = None) -> dict:
         gov = [profile.get(k) for k in (
             "rule_of_law_-2.5_2.5", "regulatory_quality_-2.5_2.5",
             "political_stability_-2.5_2.5", "control_of_corruption_-2.5_2.5")]
-        gov = [v for v in gov if v is not None]
-        if gov:
-            inst_score = _clip((sum(gov) / len(gov) + 2.5) * 2)
+        gov_vals = [float(v) for v in gov if v is not None]
+        if gov_vals:
+            inst_score = _clip((sum(gov_vals) / len(gov_vals) + 2.5) * 2)
         lpi = profile.get("logistics_performance_1_5")
         if lpi:
             log_score = _clip((lpi - 1) * 2.5)
@@ -389,7 +389,7 @@ def rank_eu_members(hs_code: str, start_year: int, end_year: int) -> list[dict]:
         first = float(r.get(start_year, 0))
         p = profiles.get(member, {})
         growth = cagr(first, last, end_year - start_year)
-        gov = [p.get(k) for k in GOV_KEYS if p.get(k) is not None]
+        gov = [float(p[k]) for k in GOV_KEYS if p.get(k) is not None]
         size_s = _clip((math.log10(last) - 6) * 2.5) if last > 0 else 0
         growth_s = _clip(5 + (growth or 0) / 3) if growth is not None else 5
         ppp_s = _clip((p.get("gdp_per_capita_usd") or 0) / 8000)

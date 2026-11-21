@@ -306,3 +306,150 @@ def test_site_build_smoke(monkeypatch, tmp_path):
     assert cat["report_count"] == 480 and cat["trade_policy"] and cat["vat"]["DE"]["rate"] == 19
     html = (tmp_path / "report.html").read_text()
     assert "{{" not in html and (tmp_path / "insights.html").exists()
+
+
+# ---------------------------------------------------------------- command-line interface
+def test_cli_report_markdown_and_json(monkeypatch, capsys, tmp_path):
+    from src import cli
+    rep = _mock_report(monkeypatch)
+    calls = []
+    monkeypatch.setattr(cli, "generate_report", lambda *a, **k: (calls.append(a), rep)[1])
+    assert cli.main(["report", "--hs", "330499", "--target", "cn", "--home", "fr", "--size", "small"]) == 0
+    assert capsys.readouterr().out.startswith("# Market Entry Report")
+    assert calls[0][:2] == ("330499", "CN") and calls[0][-1] == "Skincare & cosmetics"   # catalogue label
+    out = tmp_path / "r.json"
+    assert cli.main(["report", "--hs", "330499", "--target", "CN", "--home", "FR", "--json", "-o", str(out)]) == 0
+    import json
+    assert json.loads(out.read_text())["verdict"] == rep.data["verdict"]
+
+
+def test_cli_rejects_bad_input(capsys):
+    from src import cli
+    with pytest.raises(SystemExit):
+        cli.main(["report", "--hs", "12345", "--target", "EU", "--home", "TW"])
+    with pytest.raises(SystemExit):
+        cli.main(["report", "--hs", "871160", "--target", "US", "--home", "TW"])
+    assert cli.main(["report", "--hs", "871160", "--target", "EU", "--home", "DE"]) == 2
+
+
+def test_cli_tariff(monkeypatch, capsys):
+    from src import cli
+    monkeypatch.setattr(cli.analysis, "tariff_for", lambda *a: {"rate_pct": 10.0, "year": 2023})
+    monkeypatch.setattr(cli.analysis, "partner_tariff_for", lambda *a: {"type": "PREF", "rate_pct": 9.6, "year": 2021})
+    assert cli.main(["tariff", "--hs", "850760", "--target", "CN", "--home", "KR"]) == 0
+    out = capsys.readouterr().out
+    assert "10% (2023)" in out and "9.6%" in out
+
+
+def test_analyse_case_rejects_unknown_size():
+    with pytest.raises(ValueError):
+        report_engine.analyse_case("871160", "EU", "TW", company_size="huge")
+
+
+def test_markdown_sections_render_in_order(monkeypatch):
+    from src import report_markdown
+    md = _mock_report(monkeypatch).markdown
+    heads = [line for line in md.splitlines() if line.startswith("## ")]
+    assert heads[0] == "## 1. Executive Summary" and heads[-1] == "## Sources" and len(heads) == 11
+    assert len(report_markdown.SECTIONS) == 14
+
+
+# ---------------------------------------------------------------- HTTP cache, retries and parsers (fake network)
+class _FakeResp:
+    def __init__(self, status, payload=None):
+        self.status_code, self._payload = status, payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            import requests
+            raise requests.HTTPError(str(self.status_code))
+
+    def json(self):
+        return self._payload
+
+
+def _fake_http(monkeypatch, tmp_path, responses):
+    from types import SimpleNamespace
+    calls = []
+
+    def get(url, params=None, headers=None, timeout=None):
+        calls.append(url)
+        return responses.pop(0)
+    monkeypatch.setattr(ds, "CACHE_DIR", tmp_path)
+    monkeypatch.setattr(ds, "_http", lambda: SimpleNamespace(get=get))
+    monkeypatch.setattr(ds.time, "sleep", lambda s: None)
+    return calls
+
+
+def test_http_cache_hit_after_first_call(monkeypatch, tmp_path):
+    calls = _fake_http(monkeypatch, tmp_path, [_FakeResp(200, {"ok": 1})])
+    assert ds._cached_get_json("https://x.test/a", {"q": 1}) == {"ok": 1}
+    assert ds._cached_get_json("https://x.test/a", {"q": 1}) == {"ok": 1}   # served from disk
+    assert len(calls) == 1
+
+
+def test_http_retries_on_rate_limit_then_succeeds(monkeypatch, tmp_path):
+    calls = _fake_http(monkeypatch, tmp_path, [_FakeResp(429), _FakeResp(500), _FakeResp(200, [1, 2])])
+    assert ds._cached_get_json("https://x.test/b") == [1, 2] and len(calls) == 3
+
+
+def test_http_404_is_cached_as_not_found(monkeypatch, tmp_path):
+    calls = _fake_http(monkeypatch, tmp_path, [_FakeResp(404)])
+    for _ in range(2):
+        with pytest.raises(ds.NotFound):
+            ds._cached_get_json("https://x.test/missing")
+    assert len(calls) == 1
+
+
+def test_http_gives_up_after_five_failures(monkeypatch, tmp_path):
+    _fake_http(monkeypatch, tmp_path, [_FakeResp(500) for _ in range(5)])
+    with pytest.raises(RuntimeError):
+        ds._cached_get_json("https://x.test/down")
+
+
+def _comtrade_row(year, partner, value, kg=None):
+    return {"refYear": year, "partnerCode": partner, "primaryValue": value, "netWgt": kg,
+            "customsCode": "C00", "motCode": 0, "partner2Code": 0}
+
+
+def test_china_market_from_comtrade_rows(monkeypatch):
+    lookup = {0: {"name": "World", "iso2": None, "is_group": True}, 156: {"name": "China", "iso2": "CN", "is_group": False},
+              251: {"name": "France", "iso2": "FR", "is_group": False}, 36: {"name": "Australia", "iso2": "AU", "is_group": False},
+              490: {"name": "Other Asia, nes", "iso2": None, "is_group": True}}
+    rows = [_comtrade_row(y, p, v, kg) for y, p, v, kg in [
+        (2019, 0, 1000, 100), (2019, 251, 400, 20), (2019, 36, 300, 50), (2019, 156, 100, 10), (2019, 490, 200, 20),
+        (2024, 0, 1600, 160), (2024, 251, 500, 25), (2024, 36, 800, 90), (2024, 156, 100, 10), (2024, 490, 200, 20)]]
+    rows.append({**_comtrade_row(2024, 251, 999), "customsCode": "C01"})   # filtered out
+    monkeypatch.setattr(ds, "_comtrade_partner_lookup", lambda: lookup)
+    monkeypatch.setattr(ds, "_comtrade_rows", lambda params, years: rows)
+    m = analysis.analyze_china_market("220421", 2019, 2024)
+    assert m["latest_market_size"] == 1500                      # world minus China's re-imports
+    assert m["top_suppliers_latest_year"][0]["partner"] == "AU"
+    assert {s["partner"] for s in m["top_suppliers_latest_year"]} >= {"TW"}   # 490 relabelled as Taiwan
+    assert m["eu27_share_pct_by_year"][2024] == round(500 / 1500 * 100, 2)
+    assert m["unit_value_per_kg"] is not None
+
+
+def test_country_fundamentals_parses_world_bank(monkeypatch):
+    def fake(url, params=None, **k):
+        if "NY.GDP.PCAP.CD" in url:
+            return [{"page": 1}, [{"country": {"id": "DE"}, "value": 54000.0, "date": "2024"}]]
+        if "LP.LPI" in url:
+            raise RuntimeError("down")
+        return [{"page": 1}, []]
+    monkeypatch.setattr(ds, "_cached_get_json", fake)
+    df = ds.country_fundamentals(["DE", "FR"])
+    de = df.set_index("country").loc["DE"]
+    assert de["gdp_per_capita_usd"] == 54000.0 and de["gdp_per_capita_usd_year"] == "2024"
+
+
+def test_rank_eu_members_orders_by_score(monkeypatch):
+    rows = [{"reporter": m, "year": y, "value_eur": v} for m, y, v in [
+        ("DE", 2019, 1e9), ("DE", 2024, 2e9), ("MT", 2019, 1e6), ("MT", 2024, 1.1e6)]]
+    monkeypatch.setattr(ds, "eu_members_total_imports", lambda hs, years: pd.DataFrame(rows))
+    monkeypatch.setattr(analysis, "country_profiles", lambda codes: [
+        {"country": "DE", "gdp_per_capita_usd": 54000, "logistics_performance_1_5": 4.1, "rule_of_law_-2.5_2.5": 1.5},
+        {"country": "MT", "gdp_per_capita_usd": 38000, "logistics_performance_1_5": 3.0}])
+    ranking = analysis.rank_eu_members("871160", 2019, 2024)
+    assert [r["member"] for r in ranking] == ["DE", "MT"] and ranking[0]["rank"] == 1
+    assert ranking[0]["share_of_eu_pct"] == pytest.approx(2e9 / 2.0011e9 * 100, abs=0.01)

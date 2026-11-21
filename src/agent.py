@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import Any
 
 import anthropic
 from anthropic import beta_tool
@@ -171,7 +172,7 @@ def rule_based_entry_report(hs_code: str, target_market: str, home_country: str,
         return _to_json({"error": str(exc)})
 
 
-TOOLS = [
+TOOLS: list[Any] = [
     rule_based_entry_report,
     eu_market_data,
     china_market_data,
