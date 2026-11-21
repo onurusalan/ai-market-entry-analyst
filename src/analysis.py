@@ -458,3 +458,11 @@ def tariff_for(target: str, hs_code: str, latest_year: int) -> dict | None:
         return ds.mfn_tariff(target, hs_code, latest_year)
     except Exception:  # tariff data is a nice-to-have; never break a report over it
         return None
+
+
+def partner_tariff_for(target: str, hs_code: str, home: str, latest_year: int) -> dict | None:
+    """Partner-specific (preferential) tariff for the home country, or None (thin, mockable wrapper)."""
+    try:
+        return ds.partner_tariff(target, hs_code, home, latest_year)
+    except Exception:
+        return None

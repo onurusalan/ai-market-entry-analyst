@@ -102,6 +102,7 @@ def _mock_report(monkeypatch):
                        "rule_of_law_-2.5_2.5": 1.2}}
     monkeypatch.setattr(analysis, "analyze_china_market", lambda *a, **k: market)
     monkeypatch.setattr(analysis, "profile_for", lambda iso: profiles.get(iso))
+    monkeypatch.setattr(analysis, "partner_tariff_for", lambda *a, **k: None)
     monkeypatch.setattr(analysis, "tariff_for", lambda *a, **k: {"rate_pct": 5.0, "min_pct": 5.0, "max_pct": 5.0,
                                                                   "tariff_lines": 1, "year": 2023, "source": "test"})
 
@@ -189,6 +190,10 @@ def test_tariff_position_fta_vs_mfn():
     de = report_engine.tariff_position("EU", "DE", "850760", mfn)
     assert kr["applicable_pct"] == 0.0 and "EU-Korea" in kr["basis"]
     assert us["applicable_pct"] == 2.7 and de["applicable_pct"] == 0.0
+    pref = report_engine.tariff_position("EU", "KR", "850760", mfn, {"type": "PREF", "rate_pct": 1.2, "year": 2021})
+    assert pref["applicable_pct"] == 1.2 and "2021" in pref["basis"]
+    assert report_engine.needs_partner_lookup("EU", "IN") and not report_engine.needs_partner_lookup("EU", "US")
+    assert not report_engine.needs_partner_lookup("EU", "DE") and report_engine.needs_partner_lookup("CN", "KR")
 
 
 def test_competitive_position_price_level():
@@ -272,3 +277,32 @@ def test_agent_loop_with_fake_client():
     assert events == ["rule_based_entry_report"]
     assert seen[0]["thinking"] == {"type": "adaptive"} and any(getattr(t, "name", None) == "rule_based_entry_report"
                                                                 for t in seen[0]["tools"])
+
+
+def test_analytics_tag_is_opt_in(monkeypatch):
+    from scripts import build_site
+    monkeypatch.delenv("GOATCOUNTER_CODE", raising=False)
+    assert build_site.analytics_tag() == ""
+    monkeypatch.setenv("GOATCOUNTER_CODE", "market-entry")
+    assert "market-entry.goatcounter.com" in build_site.analytics_tag()
+    monkeypatch.setenv("GOATCOUNTER_CODE", "bad code\"><script>")
+    assert build_site.analytics_tag() == ""
+
+
+def test_site_build_smoke(monkeypatch, tmp_path):
+    """Run the whole static-site build on mocked data into a temp folder (catches wiring bugs)."""
+    from scripts import build_site
+
+    rep = _mock_report(monkeypatch)
+    monkeypatch.setattr(build_site, "generate_report", lambda *a, **k: rep)
+    monkeypatch.setattr(build_site, "prefetch_tariffs", lambda: None)
+    monkeypatch.setattr(build_site.analysis, "backtest_eu_ranking", lambda *a, **k: None)
+    monkeypatch.setattr(build_site, "DOCS", tmp_path)
+    monkeypatch.setattr(build_site, "DATA", tmp_path / "data.new")
+    monkeypatch.setattr(build_site, "MIN_MARKETS", 1)
+    build_site.main()
+    import json
+    cat = json.loads((tmp_path / "data" / "catalog.json").read_text())
+    assert cat["report_count"] == 480 and cat["trade_policy"] and cat["vat"]["DE"]["rate"] == 19
+    html = (tmp_path / "report.html").read_text()
+    assert "{{" not in html and (tmp_path / "insights.html").exists()

@@ -21,6 +21,11 @@
   $("#t-cn tbody").innerHTML = cn.map((r) => `<tr><td><a href="${link(r, "CN")}">${r.icon} ${esc(r.label)}</a></td><td class="num">${money(r.market, "USD")}</td>
     <td class="num"><b>${pct(r.eu_share)}</b></td><td class="num">${pp(r.eu_share_first, r.eu_share)}</td><td>${esc(r.top_supplier || "–")} (${pct(r.top_share)})</td></tr>`).join("");
 
+  const tp = cat.trade_policy || [];
+  $("#t-watch tbody").innerHTML = tp.map((x) => `<tr><td>${x.in_catalogue ? `<a href="report.html?p=${x.hs}&t=EU&h=CN&s=medium">${esc(x.label)}</a>` : esc(x.label)}<br><small class="muted">HS ${x.hs}</small></td>
+    <td>${esc(x.note)}</td><td style="white-space:nowrap">${esc(x.checked)}</td><td>${x.source ? `<a href="${x.source}" rel="noopener">Official source</a>` : "–"}</td></tr>`).join("");
+  if (cat.kb) $("#watch-status").textContent = `Knowledge base compiled ${cat.kb.as_of}${cat.kb.stale ? ": due for review" : ""}. Not legal advice.`;
+
   const rising = eu.slice().sort((a, b) => (b.china_share - b.china_share_first) - (a.china_share - a.china_share_first))[0];
   const falling = cn.slice().sort((a, b) => (a.eu_share - a.eu_share_first) - (b.eu_share - b.eu_share_first))[0];
   const imp = [

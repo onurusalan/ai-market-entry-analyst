@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
 import sys
 from datetime import date
@@ -38,6 +39,7 @@ END = date.today().year - 2
 START = END - 5
 
 PRODUCTS = catalog.PRODUCTS
+PRODUCT_LABELS = catalog.PRODUCT_LABELS
 TARGETS = catalog.TARGET_HOMES
 CASES = catalog.CASES
 CASE_COMPANY = {(c[0], c[1], c[2], c[3]): c[4] for c in CASES}
@@ -68,7 +70,8 @@ def memoize(fn):
     return wrapper
 
 
-for _fn in ("analyze_eu_market", "analyze_china_market", "profile_for", "rank_eu_members", "tariff_for"):
+for _fn in ("analyze_eu_market", "analyze_china_market", "profile_for", "rank_eu_members", "tariff_for",
+            "partner_tariff_for"):
     setattr(analysis, _fn, memoize(getattr(analysis, _fn)))
 
 
@@ -113,7 +116,8 @@ def report_payload(rep, home: str, size: str) -> dict:
         "distance_km": round(d["cage"].get("distance_km") or 0),
         "risks": [{"risk": r["risk"], "likelihood": r["likelihood"], "impact": r["impact"]} for r in d["risks"]],
         "tariff": {"mfn": (d["tariff"].get("mfn") or {}).get("rate_pct"), "mfn_year": (d["tariff"].get("mfn") or {}).get("year"),
-                   "applicable": d["tariff"]["applicable_pct"], "basis": d["tariff"]["basis"], "fta": d["tariff"].get("fta"),
+                   "applicable": d["tariff"]["applicable_pct"], "basis": d["tariff"]["basis"],
+                   "pref_year": (d["tariff"].get("pref") or {}).get("year"), "fta": d["tariff"].get("fta"),
                    "trade_defence": bool(d["tariff"].get("trade_defence"))},
         "cost": d["landed_cost"]["assumptions"] | {"vat_country": name(d["vat_country"])},
         "position": d["position"],
@@ -144,7 +148,29 @@ def insights_payload(markets: dict[str, dict]) -> dict:
 
 
 
+def prefetch_tariffs() -> None:
+    """Warm the on-disk cache for WITS in parallel (it is slow and needs many small calls)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from src import data_sources as ds
+    from src.report_engine import needs_partner_lookup
+    jobs = [("mfn", t, hs, None) for hs, _, _ in PRODUCTS for t in TARGETS]
+    jobs += [("partner", t, hs, h) for hs, _, _ in PRODUCTS for t, v in TARGETS.items() for h in v["homes"]
+             if needs_partner_lookup(t, h)]
+
+    def run(job):
+        kind, t, hs, h = job
+        try:
+            return ds.mfn_tariff(t, hs, END) if kind == "mfn" else ds.partner_tariff(t, hs, h, END)
+        except Exception:
+            return None
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        found = sum(1 for r in pool.map(run, jobs) if r)
+    print(f"Tariffs: {found} of {len(jobs)} WITS lookups returned data")
+
+
 def build_data() -> dict:
+    prefetch_tariffs()
     available, featured, markets = [], [], {}
     for hs, label, _icon in PRODUCTS:
         for target, tinfo in TARGETS.items():
@@ -196,6 +222,12 @@ def build_data() -> dict:
     catalog = {
         "updated": date.today().isoformat(), "years": [START, END], "repo": REPO_URL,
         "kb": kb.kb_status(),
+        "vat": {code: {"name": name(code), "rate": rate} for code, rate in sorted(kb.VAT_RATES.items(), key=lambda x: name(x[0]))},
+        "trade_policy": [{"hs": hs, "label": PRODUCT_LABELS.get(hs, f"HS {hs}"), "note": note,
+                          "checked": kb.TRADE_DEFENCE_META.get(hs, (kb.KB_AS_OF, None))[0],
+                          "source": kb.TRADE_DEFENCE_META.get(hs, (None, None))[1],
+                          "in_catalogue": hs in PRODUCT_LABELS}
+                         for hs, note in kb.TRADE_DEFENCE_NOTES.items()],
         "plotly": get_plotlyjs_version(),
         "products": [{"hs": hs, "label": label, "icon": icon} for hs, label, icon in PRODUCTS],
         "targets": {t: {"label": v["label"], "homes": [{"code": h, "name": name(h)} for h in v["homes"]]}
@@ -207,6 +239,18 @@ def build_data() -> dict:
     return catalog
 
 
+def analytics_tag() -> str:
+    """
+    Privacy-friendly, cookie-free visitor counting with GoatCounter (free for non-commercial use).
+    Off unless the GOATCOUNTER_CODE environment variable (a GitHub Actions repository variable) is set.
+    """
+    code = os.getenv("GOATCOUNTER_CODE", "").strip()
+    if not code or not code.replace("-", "").isalnum():
+        return ""
+    return (f'<script data-goatcounter="https://{code}.goatcounter.com/count" '
+            'async src="https://gc.zgo.at/count.js"></script>')
+
+
 def copy_front_end(plotly_version: str) -> None:
     for src in SITE.rglob("*"):
         if src.is_dir() or src.name == "og.html":  # og.html is only the template for the share image
@@ -214,7 +258,8 @@ def copy_front_end(plotly_version: str) -> None:
         dst = DOCS / src.relative_to(SITE)
         dst.parent.mkdir(parents=True, exist_ok=True)
         if src.suffix == ".html":
-            dst.write_text(src.read_text().replace("{{PLOTLY_VERSION}}", plotly_version))
+            dst.write_text(src.read_text().replace("{{PLOTLY_VERSION}}", plotly_version)
+                           .replace("{{ANALYTICS}}", analytics_tag()))
         else:
             shutil.copy2(src, dst)
     for slug, (hs, target, home, size) in LEGACY.items():

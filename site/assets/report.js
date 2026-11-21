@@ -90,7 +90,9 @@
             <label class="field"><span>Units per shipment</span><input type="number" name="units" value="1000" min="1" step="1"></label>
             <label class="field"><span>Freight &amp; insurance (%)</span><input type="number" name="freight" value="${r.cost.freight_pct}" min="0" step="0.5"></label>
             <label class="field"><span>Import duty (%)</span><input type="number" name="duty" value="${r.cost.duty_pct}" min="0" step="0.1"></label>
-            <label class="field"><span>Import VAT (%) · ${esc(r.cost.vat_country)}</span><input type="number" name="vat" value="${r.cost.vat_pct}" min="0" step="0.5"></label>
+            ${st.t === "EU" && cat.vat ? `<label class="field"><span>Destination member state</span><select name="dest" aria-label="Destination member state">${Object.entries(cat.vat).filter(([c]) => c !== "CN")
+              .map(([c, x]) => `<option value="${c}" data-rate="${x.rate}" ${x.name === r.cost.vat_country ? "selected" : ""}>${esc(x.name)} · VAT ${x.rate}%</option>`).join("")}</select></label>` : ""}
+            <label class="field"><span>Import VAT (%)${st.t === "EU" ? "" : ` · ${esc(r.cost.vat_country)}`}</span><input type="number" name="vat" value="${r.cost.vat_pct}" min="0" step="0.5"></label>
             <label class="field"><span>Clearance &amp; fees (%)</span><input type="number" name="other" value="${r.cost.other_pct}" min="0" step="0.5"></label>
             <label class="field" style="grid-column:1/-1"><span>Anti-dumping / countervailing duty (%)${r.tariff.trade_defence ? " · check the trade-policy note" : ""}</span><input type="number" name="td" value="0" min="0" step="0.1"></label>
           </form>
@@ -128,7 +130,7 @@
 
     const form = $("#calc-form");
     const calc = () => {
-      const v = Object.fromEntries([...new FormData(form)].map(([k, x]) => [k, Math.max(0, parseFloat(x) || 0)]));
+      const v = Object.fromEntries([...new FormData(form)].filter(([k]) => k !== "dest").map(([k, x]) => [k, Math.max(0, parseFloat(x) || 0)]));
       const goods = v.price, freight = goods * v.freight / 100, cif = goods + freight, duty = cif * (v.duty + v.td) / 100;
       const other = goods * v.other / 100, vat = (cif + duty) * v.vat / 100, exVat = cif + duty + other, total = exVat + vat;
       const f = (x) => x.toLocaleString("en", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -141,6 +143,7 @@
           <tr><td><b>Per shipment (${v.units.toLocaleString("en")} units)</b></td><td class="num"><b>${money(total * v.units, cur)}</b></td></tr></tbody></table>
         <p class="muted" style="font-size:12.5px;margin:6px 0 0">Duty and VAT on the CIF value (EU and Chinese customs practice). Import VAT is usually recoverable for registered importers. Excise and consumption taxes are not included.</p>`;
     };
+    if (form.dest) form.dest.addEventListener("change", () => { form.vat.value = form.dest.selectedOptions[0].dataset.rate; calc(); });
     form.addEventListener("input", calc);
     calc();
 

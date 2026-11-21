@@ -20,6 +20,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: python scripts/build_site.py
+        env:
+          GOATCOUNTER_CODE: ${{ vars.GOATCOUNTER_CODE }}   # optional visitor analytics
       - name: Commit updated site
         run: |
           git config user.name "github-actions[bot]"

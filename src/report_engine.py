@@ -246,18 +246,34 @@ def entry_mode(target: str, sector: str, company_size: str, score: dict, cage: d
     return {"mode": mode, "reasons": reasons}
 
 
-def tariff_position(target: str, home: str, hs_code: str, mfn: dict | None) -> dict:
-    """MFN rate from WITS plus the rate this home country is likely to pay (FTA preference or MFN)."""
+def tariff_position(target: str, home: str, hs_code: str, mfn: dict | None, pref: dict | None = None) -> dict:
+    """
+    MFN rate from WITS plus the rate this home country is likely to pay. Priority: a partner-specific
+    preferential rate published by WITS, then an FTA assumption (0%), then MFN.
+    """
     fta = (kb.CN_FTA_PARTNERS.get(home) if target == "CN" else kb.EU_FTA_PARTNERS.get(home))
     if target != "CN" and home in kb.EU27:
         return {"mfn": mfn, "applicable_pct": 0.0, "basis": "Intra-EU trade: no customs duty", "fta": None}
     mfn_rate = mfn["rate_pct"] if mfn else None
+    extra = kb.TRADE_DEFENCE_NOTES.get(hs_code) if (target != "CN" and home == "CN") or target == "CN" else None
+    if pref and pref.get("type") == "PREF" and pref.get("rate_pct") is not None:
+        label = fta or kb.EU_GSP_BENEFICIARIES.get(home) if target != "CN" else fta
+        label = label or "a preferential scheme"
+        return {"mfn": mfn, "applicable_pct": pref["rate_pct"], "fta": fta, "trade_defence": extra, "pref": pref,
+                "basis": f"Preferential rate under {label}, published by WITS for {pref['year']} "
+                         f"(rules of origin apply; MFN {mfn_rate if mfn_rate is not None else 'n/a'}% otherwise)"}
     if fta and mfn_rate is not None:
         rate, basis = kb.FTA_DEFAULT_PREF_RATE, f"Preferential rate under {fta} (if rules of origin are met; MFN {mfn_rate}% otherwise)"
     else:
         rate, basis = mfn_rate, "MFN rate (no free-trade agreement)" if mfn_rate is not None else "Tariff data unavailable"
-    extra = kb.TRADE_DEFENCE_NOTES.get(hs_code) if (target != "CN" and home == "CN") or target == "CN" else None
     return {"mfn": mfn, "applicable_pct": rate, "basis": basis, "fta": fta, "trade_defence": extra}
+
+
+def needs_partner_lookup(target: str, home: str) -> bool:
+    """Partner-specific rates exist only for FTA partners and GSP beneficiaries."""
+    if target == "CN":
+        return home in kb.CN_FTA_PARTNERS
+    return home not in kb.EU27 and (home in kb.EU_FTA_PARTNERS or home in kb.EU_GSP_BENEFICIARIES)
 
 
 FREIGHT_PCT = {"Low": 3.0, "Medium": 6.0, "High": 10.0}  # freight + insurance as % of goods value
@@ -363,7 +379,9 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
     score = analysis.attractiveness_score(market, target_p)
     sensitivity = analysis.score_sensitivity(score)
     cage = cage_analysis(home, target, home_p, target_p)
-    tariff = tariff_position(target, home, hs_code, analysis.tariff_for(target, hs_code, market["latest_year"]))
+    tariff = tariff_position(target, home, hs_code, analysis.tariff_for(target, hs_code, market["latest_year"]),
+                             analysis.partner_tariff_for(target, hs_code, home, market["latest_year"])
+                             if needs_partner_lookup(target, home) else None)
     position = competitive_position(home, market)
     risks = risk_matrix(target, home, sector, market, score, cage, hs_code, tariff)
     mode = entry_mode(target, sector, company_size, score, cage, market, position)

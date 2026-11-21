@@ -79,6 +79,9 @@ EU_FTA_PARTNERS = {
     "CA": "CETA (EU-Canada)", "MX": "EU-Mexico Global Agreement",
     "TR": "EU-Türkiye Customs Union (industrial goods)",
 }
+# Developing countries with EU GSP preferences (many product sections can be graduated: WITS data decide).
+EU_GSP_BENEFICIARIES = {"IN": "EU GSP (standard arrangement)", "PK": "EU GSP+", "PH": "EU GSP+", "ID": "EU GSP (standard arrangement)"}
+
 CN_FTA_PARTNERS = {
     "JP": "RCEP", "KR": "China-Korea FTA and RCEP", "VN": "China-ASEAN FTA and RCEP",
     "SG": "China-Singapore FTA and RCEP", "AU": "China-Australia FTA and RCEP",

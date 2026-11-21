@@ -126,6 +126,14 @@ The web app is already live on GitHub Pages. To also host the Streamlit app (any
 
 No secrets are required: the app runs fully on public data.
 
+## 📊 Visitor analytics (optional, free)
+
+Cookie-free page-view counting with [GoatCounter](https://www.goatcounter.com/) is built in but off by default:
+
+1. Create a free GoatCounter account and pick a code, e.g. `market-entry` (dashboard at `market-entry.goatcounter.com`).
+2. In the GitHub repository: **Settings → Secrets and variables → Actions → Variables → New variable**, name `GOATCOUNTER_CODE`, value your code.
+3. Run the **Refresh web app data** workflow once (Actions tab → Run workflow). Counting starts with that build.
+
 ## 📐 Methodology
 
 **Market size.** Imports into the target market proxy addressable demand: extra-EU imports (Eurostat `EXT_EU27_2020`) for the EU and China-reported imports (UN Comtrade, excluding re-imports of Chinese goods) for China.
@@ -146,7 +154,7 @@ No secrets are required: the app runs fully on public data.
 
 **Sensitivity.** The sub-scores are re-weighted under equal, size-led, growth-led, risk-averse and niche-entrant schemes. If the verdict band changes, the report labels the verdict as borderline.
 
-**Tariffs and landed cost.** MFN applied tariff (simple average across national tariff lines) from WITS / UNCTAD TRAINS, latest available year. FTA partners are assumed to qualify for 0% if rules of origin are met. Landed cost = goods + freight/insurance (3/6/10% by distance) + duty on the CIF value + clearance (1.5%) + import VAT on CIF + duty.
+**Tariffs and landed cost.** MFN applied tariff (simple average across national tariff lines) from WITS / UNCTAD TRAINS, latest available year. Where WITS publishes a partner-specific preferential rate (FTA or GSP partners, latest year available, often with a 2-4 year lag) that rate is used; otherwise FTA partners are assumed to pay 0% if rules of origin are met. Landed cost = goods + freight/insurance (3/6/10% by distance) + duty on the CIF value + clearance (1.5%) + import VAT on CIF + duty.
 
 **Competitive position.** The home country's rank and share among all suppliers, its share change over the period, and its unit value per kg vs the market average (premium ≥ 1.25×, value ≤ 0.8×).
 
@@ -158,7 +166,7 @@ No secrets are required: the app runs fully on public data.
 
 **Regulatory knowledge base.** Each sector note links to the official legal text or regulator; notes carry a compilation date and are flagged as due for review after 12 months.
 
-**Limitations.** Imports are a demand proxy, not total consumption. Hubs such as the Netherlands and Belgium re-export. Unit values mix product grades. WITS has no partner-specific preferential rates in its public API, so FTA rates are an assumption. Regulatory notes are curated and must be verified on the official sources linked in each report; they are not legal advice.
+**Limitations.** Imports are a demand proxy, not total consumption. Hubs such as the Netherlands and Belgium re-export. Unit values mix product grades. Partner-specific preferential rates in WITS lag by several years and are missing for some agreements, in which case the FTA rate is an assumption. Regulatory notes are curated and must be verified on the official sources linked in each report; they are not legal advice.
 
 ## 🗺️ Roadmap
 
@@ -166,9 +174,12 @@ No secrets are required: the app runs fully on public data.
 - [x] Landed-cost calculator (duties, freight, VAT, trade-defence duty)
 - [x] Data-quality checks, sensitivity analysis and backtest
 - [x] PDF export (print-optimised report page)
-- [ ] Partner-specific preferential rates from EU TARIC and China's tariff schedule
-- [ ] Trade-defence tracker (EU anti-dumping and anti-subsidy cases)
-- [ ] Member-state targets and services trade
+- [x] Partner-specific preferential rates (WITS, FTA and GSP partners)
+- [ ] Current-year preferential rates from EU TARIC and China's tariff schedule
+- [x] Trade-policy watch (curated, dated notes with official sources)
+- [x] Member-state VAT selector in the landed-cost calculator
+- [ ] Automated trade-defence tracker (needs a machine-readable feed of EU and MOFCOM cases)
+- [ ] Full member-state target reports and services trade (needs a different data source)
 
 ## 🛠️ Tech stack
 

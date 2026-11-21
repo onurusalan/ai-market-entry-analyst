@@ -37,6 +37,17 @@ WORLD_BANK_URL = "https://api.worldbank.org/v2/country/{countries}/indicator/{in
 WITS_URL = ("https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN/reporter/{reporter}"
             "/partner/000/product/{hs}/year/{year}/datatype/reported")
 WITS_REPORTERS = {"EU": "918", "CN": "156"}  # EU member states apply the common EU tariff
+WITS_PARTNER_URL = ("https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN/reporter/{reporter}"
+                    "/partner/{partner}/product/{hs}/year/{year}/datatype/reported")
+# ISO 3166 numeric codes used by WITS for partner countries
+ISO_NUMERIC = {
+    "CN": "156", "US": "840", "JP": "392", "KR": "410", "TW": "158", "VN": "704", "IN": "356", "GB": "826",
+    "CH": "756", "NO": "578", "SG": "702", "CA": "124", "AU": "036", "MX": "484", "BR": "076", "TR": "792",
+    "DE": "276", "FR": "250", "IT": "380", "ES": "724", "NL": "528", "BE": "056", "AT": "040", "PL": "616",
+    "SE": "752", "DK": "208", "FI": "246", "IE": "372", "PT": "620", "CZ": "203", "HU": "348", "RO": "642",
+    "GR": "300", "BG": "100", "HR": "191", "SK": "703", "SI": "705", "LT": "440", "LV": "428", "EE": "233",
+    "LU": "442", "MT": "470", "CY": "196",
+}
 
 EU27 = {
     "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU",
@@ -67,7 +78,10 @@ def _cached_get_json(url: str, params: dict | list | None = None, timeout: int =
     """GET a URL and return parsed JSON, using a simple on-disk cache."""
     path = _cache_path(url, params)
     if _is_cached(url, params):
-        return json.loads(path.read_text())
+        cached = json.loads(path.read_text())
+        if isinstance(cached, dict) and cached.get("__not_found__"):
+            raise NotFound(f"No data at {url} (cached)")
+        return cached
 
     last_error = None
     for attempt in range(5):
@@ -77,6 +91,7 @@ def _cached_get_json(url: str, params: dict | list | None = None, timeout: int =
                 time.sleep(3 * (attempt + 1))
                 continue
             if resp.status_code == 404:
+                path.write_text(json.dumps({"__not_found__": True}))  # remember empty answers too
                 raise NotFound(f"No data at {url}")
             resp.raise_for_status()
             data = resp.json()
@@ -415,4 +430,28 @@ def mfn_tariff(target: str, hs_code: str, latest_year: int, lookback: int = 4) -
         parsed = _parse_wits(data)
         if parsed:
             return {**parsed, "year": year, "source": "World Bank WITS / UNCTAD TRAINS (MFN applied, simple average)"}
+    return None
+
+
+def partner_tariff(target: str, hs_code: str, partner_iso2: str, latest_year: int, lookback: int = 6) -> dict | None:
+    """
+    Tariff the target market applies to one partner country, including preferential (FTA/GSP) rates,
+    from WITS. WITS publishes partner-specific rates only where a preference exists and with a lag,
+    so this walks back up to `lookback` years. Returns None when no partner-specific record exists
+    (the partner then pays the MFN rate).
+    """
+    partner = ISO_NUMERIC.get(partner_iso2)
+    if not partner:
+        return None
+    reporter = WITS_REPORTERS["CN" if target == "CN" else "EU"]
+    for year in range(latest_year, latest_year - lookback, -1):
+        url = WITS_PARTNER_URL.format(reporter=reporter, partner=partner, hs=hs_code, year=year)
+        try:
+            data = _cached_get_json(url, {"format": "JSON"}, timeout=30)
+        except RuntimeError:
+            continue
+        parsed = _parse_wits(data)
+        if parsed:
+            return {**parsed, "year": year, "partner": partner_iso2,
+                    "source": "World Bank WITS / UNCTAD TRAINS (partner-specific applied rate)"}
     return None
