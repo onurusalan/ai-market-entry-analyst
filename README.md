@@ -19,6 +19,9 @@ Everything runs on **free public data**. No paid service is needed.
 |---|---|---|
 | 📄 | **Entry report** | Verdict, market sizing, competition, starting position, PESTEL, CAGE, tariffs, regulation checklist, risk matrix, entry mode, 90-day plan |
 | 💶 | **Tariffs & landed cost** | MFN applied tariff from WITS (UNCTAD TRAINS), FTA preferences, and an interactive landed-cost calculator (freight, duty, trade-defence duty, VAT, fees) |
+| 🆚 | **Compare page** | Up to three cases side by side (e.g. EU or China first?), best value per metric highlighted, a recommendation and a shareable link |
+| 📉 | **Competitor momentum** | Which suppliers gained or lost market share over the period, and the fastest-rising challenger |
+| ⬇️ | **Data export** | Every report's numbers as CSV (Excel-ready), Markdown/JSON from the CLI, PDF from the browser |
 | 🧭 | **Competitive position** | The home country's rank, market share trend and price level (unit value per kg vs the market average) |
 | 🛡️ | **Data-quality checks** | Flags small markets, HS-code changes (HS2022) and low base years; growth is measured with a log-linear trend and shrunk towards neutral when data are unreliable |
 | ⚖️ | **Sensitivity analysis** | Re-scores every case under six weighting schemes and flags verdicts that depend on the weights |

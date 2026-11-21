@@ -100,6 +100,7 @@ def market_payload(hs: str, target: str, data: dict) -> dict:
                        "uv": s.get("unit_value_per_kg")} for s in m["top_suppliers_latest_year"]],
         "share_label": "China's share of extra-EU imports" if target != "CN" else "EU-27 share of China's imports",
         "share": {str(k): v for k, v in (m.get(share_key) or {}).items()},
+        "momentum": m.get("momentum") or {"gainers": [], "losers": []},
         "score": data["score"], "sensitivity": data["sensitivity"],
         "ranking": [{"rank": r["rank"], "code": r["member"], "name": name(r["member"]), "iso3": EU_ISO3[r["member"]],
                      "score": r["score_0_10"], "imports": r["imports_eur"], "share": r["share_of_eu_pct"],

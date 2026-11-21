@@ -44,7 +44,7 @@
           <div class="chips"><span class="chip">HS ${m.hs}</span><span class="chip">${esc(m.sector)}</span>
             <span class="chip">Home: ${esc(r.home_name)}</span><span class="chip">${esc(cat.sizes[r.size])}</span>
             <span class="chip">Data ${m.years[0]}–${m.years[m.years.length - 1]}</span></div></div>
-        <div class="r-actions"><button class="btn ghost sm" id="copy">Copy link</button><button class="btn ghost sm" id="print">Download PDF</button></div>
+        <div class="r-actions"><button class="btn ghost sm" id="copy">Copy link</button><a class="btn ghost sm" href="${compareUrl()}">Compare</a><button class="btn ghost sm" id="csv">Download data (CSV)</button><button class="btn ghost sm" id="print">Download PDF</button></div>
       </div>
     </div>
 
@@ -73,6 +73,7 @@
       <div class="card chart-card"><h3>Import market size</h3><p class="cap">${cur}, ${m.years[0]}–${m.latest_year}</p><div class="plot" id="c-size"></div></div>
       <div class="card chart-card"><h3>Who supplies the market</h3><p class="cap">Top suppliers' share of imports, ${m.latest_year}. ${esc(r.home_name)} highlighted.</p><div class="plot" id="c-sup"></div></div>
       <div class="card chart-card"><h3>${esc(m.share_label)}</h3><p class="cap">Share of total imports, %</p><div class="plot" id="c-share"></div></div>
+      ${(m.momentum.gainers.length || m.momentum.losers.length) ? `<div class="card chart-card"><h3>Who is gaining share</h3><p class="cap">Change in market share since ${m.years[0]}, percentage points (suppliers with ≥1% share)</p><div class="plot" id="c-mom"></div></div>` : ""}
       <div class="card chart-card"><h3>Score breakdown</h3><p class="cap">Sub-scores out of 10, with weights</p><div class="plot" id="c-score"></div></div>
       <div class="card chart-card"><h3>Does the verdict depend on the weights?</h3><p class="cap">${m.sensitivity.robust
         ? `Robust: ${m.sensitivity.min}–${m.sensitivity.max} across six weighting schemes, same verdict band`
@@ -124,6 +125,7 @@
     heads.forEach((h) => spy.observe(h));
 
     $("#print").addEventListener("click", () => window.print());
+    $("#csv").addEventListener("click", () => downloadCsv(m, r, product, tName));
     $("#copy").addEventListener("click", async () => {
       try { await navigator.clipboard.writeText(location.href); toast("Link copied"); } catch (e) { toast(location.href); }
     });
@@ -150,6 +152,38 @@
     const draw = () => drawCharts(m, r);
     if (window.Plotly) draw(); else window.addEventListener("load", draw);
     window.addEventListener("themechange", draw);
+  }
+
+  function compareUrl() { // this case vs the same product in the other market (same home if offered there)
+    const other = st.t === "EU" ? "CN" : "EU";
+    const homes = cat.targets[other].homes.map((h) => h.code);
+    const h = homes.includes(st.h) ? st.h : homes[0];
+    const k = (x) => `${x.p}-${x.t}-${x.h}-${x.s}`;
+    return `compare.html?c=${k(st)},${k({ p: st.p, t: other, h, s: st.s })}`;
+  }
+
+  function downloadCsv(m, r, product, tName) {
+    const q = (v) => (v == null ? "" : /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+    const rows = [["section", "item", "value", "detail"]];
+    const add = (...cells) => rows.push(cells);
+    add("case", "product", product.label, `HS ${m.hs}`); add("case", "target", tName, ""); add("case", "home", r.home_name, r.size);
+    add("verdict", "verdict", r.verdict, r.mode); add("verdict", "score_0_10", r.score, "");
+    Object.entries(m.score.sub_scores).forEach(([k, v]) => add("score", k, v, `weight ${m.score.weights[k]}`));
+    m.years.forEach((y, i) => add("market_size", y, m.sizes[i], m.currency));
+    add("market", "growth_trend_pct", m.growth, `confidence ${m.quality.confidence}`); add("market", "hhi", m.hhi, m.hhi_label);
+    m.suppliers.forEach((s) => add("supplier", s.name, s.share, `value ${s.value}; unit value/kg ${s.uv ?? ""}`));
+    [...m.momentum.gainers, ...m.momentum.losers].forEach((x) => add("momentum_pp", x.name, x.change_pp, `${x.share_first}% -> ${x.share_last}%`));
+    add("tariff", "mfn_pct", r.tariff.mfn, r.tariff.mfn_year); add("tariff", "applicable_pct", r.tariff.applicable, r.tariff.basis);
+    Object.entries(r.cost).forEach(([k, v]) => add("landed_cost_assumption", k, v, ""));
+    r.risks.forEach((x) => add("risk", x.risk, x.likelihood, `impact ${x.impact}`));
+    m.ranking.forEach((x) => add("eu_ranking", x.name, x.score, `rank ${x.rank}; imports ${x.imports}`));
+    const blob = new Blob(["\ufeff" + rows.map((row) => row.map(q).join(",")).join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${product.label.replace(/[^A-Za-z0-9]+/g, "-")}-${st.t}-${st.h}-${st.s}.csv`.toLowerCase();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+    toast("CSV downloaded");
   }
 
   function positionHtml(r, m) {
@@ -218,6 +252,16 @@
         textposition: "outside", cliponaxis: false, hovertemplate: "%{y}: %{x:.1f}/10<extra></extra>" },
     ], L({ barmode: "overlay", margin: { t: 8, r: 36, b: 30, l: 140 }, xaxis: { ...base.xaxis, range: [0, 10.5] }, yaxis: { ...base.yaxis, gridcolor: "rgba(0,0,0,0)", automargin: true } }), cfg);
 
+    if (document.getElementById("c-mom")) {
+      const mv = [...m.momentum.gainers, ...m.momentum.losers].sort((a, b) => a.change_pp - b.change_pp);
+      Plotly.react("c-mom", [{
+        type: "bar", orientation: "h", y: mv.map((x) => x.name), x: mv.map((x) => x.change_pp),
+        marker: { color: mv.map((x) => (x.partner === r.home ? C.accent : x.change_pp >= 0 ? v("--warn") : C.base)) },
+        text: mv.map((x) => `${x.change_pp > 0 ? "+" : ""}${x.change_pp.toFixed(1)} pp`), textposition: "outside", cliponaxis: false,
+        customdata: mv.map((x) => `${x.share_first}% → ${x.share_last}%`), hovertemplate: "%{y}: %{customdata}<extra></extra>",
+      }], L({ margin: { t: 8, r: 60, b: 30, l: 120 }, xaxis: { ...base.xaxis, ticksuffix: " pp", zeroline: true, zerolinecolor: C.text },
+        yaxis: { ...base.yaxis, gridcolor: "rgba(0,0,0,0)", automargin: true } }), cfg);
+    }
     const sc = m.sensitivity.scenarios.slice().reverse();
     const band = (x) => (x >= 6.5 ? v("--ok") : x >= 5 ? v("--warn") : v("--bad"));
     Plotly.react("c-sens", [{
@@ -232,6 +276,7 @@
       "c-sup": `Bar chart of supplier shares: ${m.suppliers.slice(0, 3).map((s) => `${s.name} ${s.share}%`).join(", ")}.`,
       "c-share": `Line chart: ${m.share_label} by year.`,
       "c-score": `Score components: ${Object.entries(m.score.sub_scores).map(([k, x]) => `${k.replace(/_/g, " ")} ${x}`).join(", ")}.`,
+      "c-mom": `Share change since ${m.years[0]}: ${[...m.momentum.gainers, ...m.momentum.losers].slice(0, 4).map((x) => `${x.name} ${x.change_pp > 0 ? "+" : ""}${x.change_pp} pp`).join(", ")}.`,
       "c-sens": `Scores under six weighting schemes range from ${m.sensitivity.min} to ${m.sensitivity.max}.`,
       "c-map": m.ranking.length ? `Map of EU member states by entry score; top three: ${m.ranking.slice(0, 3).map((x) => x.name).join(", ")}.` : "",
     };

@@ -98,6 +98,28 @@ def _growth_block(series: dict[int, float], latest_size: float, hs_code: str) ->
     return {"cagr_pct": endpoint, "growth_trend_pct": trend_growth(window), "data_quality": dq}
 
 
+def supplier_momentum(positions: dict, min_share: float = 1.0, n: int = 5) -> dict:
+    """
+    Which suppliers gained or lost market share over the period (percentage points),
+    among those with at least `min_share` % in the first or the latest year.
+    Shows where competition is coming from and who is losing ground.
+    """
+    rows = []
+    for code, p in positions.items():
+        shares = p.get("share_by_year") or {}
+        if len(shares) < 2:
+            continue
+        fy, ly = min(shares), max(shares)
+        if max(shares[fy], shares[ly]) < min_share:
+            continue
+        rows.append({"partner": code, "name": p.get("name", code), "first_year": fy, "share_first": shares[fy],
+                     "share_last": shares[ly], "change_pp": round(shares[ly] - shares[fy], 2)})
+    rows.sort(key=lambda r: r["change_pp"], reverse=True)
+    gainers = [r for r in rows if r["change_pp"] > 0][:n]
+    losers = sorted((r for r in rows if r["change_pp"] < 0), key=lambda r: r["change_pp"])[:n]
+    return {"gainers": gainers, "losers": losers}
+
+
 def _unit_value(value: float, weight_kg: float | None) -> float | None:
     if not weight_kg or weight_kg <= 0 or not value:
         return None
@@ -120,6 +142,12 @@ def _supplier_table(df: pd.DataFrame, value_col: str, total: float, top_n: int |
     return rows
 
 
+def _display_name(code: str, source_name) -> str:
+    """Short country name from the knowledge base where known (e.g. 'South Korea', not 'Korea, Republic of')."""
+    from . import knowledge as kb
+    return kb.COUNTRIES.get(code, {}).get("name") or str(source_name).split(" (")[0]
+
+
 def _positions(df: pd.DataFrame, value_col: str, totals: pd.Series, latest: int) -> dict:
     """Every supplier's rank and share in the latest year plus its share trend (for 'your position')."""
     out = {}
@@ -128,7 +156,7 @@ def _positions(df: pd.DataFrame, value_col: str, totals: pd.Series, latest: int)
         code = r["partner"]
         hist = df[df["partner"] == code].set_index("year")[value_col]
         out[code] = {
-            "rank": rank, "suppliers": len(last),
+            "rank": rank, "suppliers": len(last), "name": _display_name(code, r["partner_name"]),
             "share_by_year": {int(y): round(float(hist.get(y, 0)) / float(totals.loc[y]) * 100, 2)
                               for y in totals.index if totals.loc[y]},
         }
@@ -182,7 +210,8 @@ def analyze_eu_market(
         **_growth_block(sizes, total_last, hs_code),
         "top_suppliers_latest_year": suppliers,
         "unit_value_per_kg": _unit_value(float(latest["value_eur"].sum()), w_last),
-        "supplier_positions": _positions(countries, "value_eur", totals, last_year),
+        "supplier_positions": (positions := _positions(countries, "value_eur", totals, last_year)),
+        "momentum": supplier_momentum(positions),
         "hhi": concentration,
         "hhi_label": hhi_label(concentration),
         "china_share_pct_by_year": china_share_trend,
@@ -254,7 +283,8 @@ def analyze_china_market(
         **_growth_block(sizes, total_last, hs_code),
         "top_suppliers_latest_year": suppliers,
         "unit_value_per_kg": _unit_value(float(latest["value_usd"].sum()), w_last),
-        "supplier_positions": _positions(countries, "value_usd", world, last_year),
+        "supplier_positions": (positions := _positions(countries, "value_usd", world, last_year)),
+        "momentum": supplier_momentum(positions),
         "hhi": concentration,
         "hhi_label": hhi_label(concentration),
         "eu27_share_pct_by_year": eu_share_trend,

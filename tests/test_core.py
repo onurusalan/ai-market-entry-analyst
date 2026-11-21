@@ -305,7 +305,7 @@ def test_site_build_smoke(monkeypatch, tmp_path):
     cat = json.loads((tmp_path / "data" / "catalog.json").read_text())
     assert cat["report_count"] == 480 and cat["trade_policy"] and cat["vat"]["DE"]["rate"] == 19
     html = (tmp_path / "report.html").read_text()
-    assert "{{" not in html and (tmp_path / "insights.html").exists()
+    assert "{{" not in html and (tmp_path / "insights.html").exists() and (tmp_path / "compare.html").exists()
 
 
 # ---------------------------------------------------------------- command-line interface
@@ -351,7 +351,7 @@ def test_markdown_sections_render_in_order(monkeypatch):
     md = _mock_report(monkeypatch).markdown
     heads = [line for line in md.splitlines() if line.startswith("## ")]
     assert heads[0] == "## 1. Executive Summary" and heads[-1] == "## Sources" and len(heads) == 11
-    assert len(report_markdown.SECTIONS) == 14
+    assert len(report_markdown.SECTIONS) == 15
 
 
 # ---------------------------------------------------------------- HTTP cache, retries and parsers (fake network)
@@ -453,3 +453,16 @@ def test_rank_eu_members_orders_by_score(monkeypatch):
     ranking = analysis.rank_eu_members("871160", 2019, 2024)
     assert [r["member"] for r in ranking] == ["DE", "MT"] and ranking[0]["rank"] == 1
     assert ranking[0]["share_of_eu_pct"] == pytest.approx(2e9 / 2.0011e9 * 100, abs=0.01)
+
+
+def test_supplier_momentum_gainers_and_losers():
+    positions = {
+        "CN": {"name": "China", "share_by_year": {2019: 50.0, 2024: 60.0}},
+        "TW": {"name": "Taiwan", "share_by_year": {2019: 30.0, 2024: 22.0}},
+        "VN": {"name": "Viet Nam", "share_by_year": {2019: 2.0, 2024: 8.0}},
+        "XX": {"name": "Tiny", "share_by_year": {2019: 0.1, 2024: 0.5}},
+    }
+    mom = analysis.supplier_momentum(positions)
+    assert [r["partner"] for r in mom["gainers"]] == ["CN", "VN"]
+    assert mom["losers"][0]["partner"] == "TW" and mom["losers"][0]["change_pp"] == -8.0
+    assert all(r["partner"] != "XX" for r in mom["gainers"] + mom["losers"])   # below 1% share

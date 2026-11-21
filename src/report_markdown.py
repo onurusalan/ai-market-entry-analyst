@@ -101,6 +101,24 @@ def competition(c: Case) -> Lines:
     return lines
 
 
+def competitor_momentum(c: Case) -> Lines:
+    mom = c.market.get("momentum") or {}
+    gainers, losers = mom.get("gainers") or [], mom.get("losers") or []
+    if not gainers and not losers:
+        return []
+    lines = ["### Competitor momentum", "",
+             "Change in market share over the period, among suppliers with at least 1% share.", "",
+             "| Supplier | Share then | Share now | Change |", "|---|---|---|---|"]
+    for r in gainers + losers:
+        name = f"**{r['name']}**" if r["partner"] == c.home else r["name"]
+        lines.append(f"| {name} | {r['share_first']}% ({r['first_year']}) | {r['share_last']}% | {r['change_pp']:+.2f} pp |")
+    if gainers:
+        top = gainers[0]
+        lines += ["", f"Fastest-rising challenger: **{top['name']}** ({top['change_pp']:+.1f} pp). "
+                      "Rising suppliers signal where price and capacity pressure will come from."]
+    return lines + [""]
+
+
 def starting_position(c: Case) -> Lines:
     pos, ly = c.position, c.latest_year
     lines = [f"### Your starting position: {_name(c.home)}", ""]
@@ -223,7 +241,7 @@ def sources(c: Case) -> Lines:
 
 
 SECTIONS: list[Callable[[Case], Lines]] = [
-    header, executive_summary, market_size, competition, starting_position, priority_markets, pestel_section,
+    header, executive_summary, market_size, competition, competitor_momentum, starting_position, priority_markets, pestel_section,
     cage_section, tariffs_and_regulation, risk_section, entry_mode_section, score_section, action_plan_section, sources,
 ]
 

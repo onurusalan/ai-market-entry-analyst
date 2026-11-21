@@ -85,14 +85,14 @@ function buildPicker(form, cat, initial, { variant = "card", onSubmit }) {
     <div class="field"><span>Target market</span><div class="seg" role="radiogroup" aria-label="Target market">${targetSeg}</div></div>
     <label class="field"><span>Company home country</span><select name="h" aria-label="Home country"></select></label>
     <div class="field"><span>Company size</span><div class="seg" role="radiogroup" aria-label="Company size">${sizeSeg}</div></div>
-    <div class="actions">${variant === "card"
+    ${variant === "slot" ? "" : `<div class="actions">${variant === "card"
       ? '<button class="btn block" type="submit">Generate report <span aria-hidden="true">→</span></button>'
-      : '<button class="btn sm" type="submit">Update report</button>'}</div>`;
+      : '<button class="btn sm" type="submit">Update report</button>'}</div>`}`;
 
   const fill = () => {
     form.p.innerHTML = cat.products.map((p) => {
       const ok = cat.available.includes(`${p.hs}-${st.t}`);
-      return `<option value="${p.hs}" ${ok ? "" : "disabled"}>${p.icon} ${esc(p.label)}${variant === "card" ? ` · HS ${p.hs}` : ""}${ok ? "" : " (no data)"}</option>`;
+      return `<option value="${p.hs}" ${ok ? "" : "disabled"}>${p.icon} ${esc(p.label)}${variant !== "bar" ? ` · HS ${p.hs}` : ""}${ok ? "" : " (no data)"}</option>`;
     }).join("");
     form.h.innerHTML = cat.targets[st.t].homes.map((h) => `<option value="${h.code}">${esc(h.name)}</option>`).join("");
     form.p.value = st.p; form.h.value = st.h;
@@ -106,6 +106,6 @@ function buildPicker(form, cat, initial, { variant = "card", onSubmit }) {
       h: form.h.value, s: $('input[name="s"]:checked', form).value });
     if (e.target.name === "t") fill();
   });
-  form.addEventListener("submit", (e) => { e.preventDefault(); onSubmit(st); });
+  form.addEventListener("submit", (e) => { e.preventDefault(); if (onSubmit) onSubmit(st); });
   return () => st;
 }
