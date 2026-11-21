@@ -1,0 +1,40 @@
+name: Custom market report request
+description: Ask for an analysis of a product or country pair the analyzer does not cover yet.
+title: "[Custom report] <product> from <home country> to <target market>"
+labels: ["custom-report"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest. Please do not include confidential information: issues are public.
+  - type: input
+    id: product
+    attributes:
+      label: Product
+      description: Product name and, if you know it, the 6-digit HS code.
+      placeholder: "Electric scooters (HS 871160)"
+    validations:
+      required: true
+  - type: input
+    id: home
+    attributes:
+      label: Company home country
+    validations:
+      required: true
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target market
+      options: ["EU-27", "An EU member state", "China", "Other"]
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Company size
+      options: ["Small (<50 staff)", "Mid-sized (50-250 staff)", "Large (250+ staff)"]
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What decision should the report support?

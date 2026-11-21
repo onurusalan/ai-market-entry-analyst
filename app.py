@@ -18,9 +18,9 @@ import plotly.graph_objects as go
 import streamlit as st
 from dotenv import load_dotenv
 
-from src import analysis
+from src import analysis, catalog
 from src import knowledge as kb
-from src.report_engine import COMPANY_SIZES, generate_report
+from src.report_engine import COMPANY_SIZES, generate_report, landed_cost
 
 load_dotenv()
 
@@ -64,25 +64,10 @@ section[data-testid="stSidebar"] input { color: #0e1726 !important; }
 <div class="tags"><span>Eurostat Comext</span><span>UN Comtrade</span><span>World Bank</span><span>PESTEL · CAGE · HHI · OLI</span></div></div>
 """, unsafe_allow_html=True)
 
-PRESETS = {
-    "E-bikes (871160)": "871160",
-    "Lithium-ion batteries (850760)": "850760",
-    "Solar PV modules (854143)": "854143",
-    "Battery-electric cars (870380)": "870380",
-    "Medicaments, dosed (300490)": "300490",
-    "Wine, bottled (220421)": "220421",
-    "Skincare & cosmetics (330499)": "330499",
-    "Heat pumps (841861)": "841861",
-    "Furniture, wooden (940360)": "940360",
-    "Custom HS6 code…": "",
-}
+PRESETS = {f"{label} ({hs})": hs for hs, label, _ in catalog.PRODUCTS}
+PRESETS["Custom HS6 code…"] = ""
 
-EU_ISO3 = {
-    "AT": "AUT", "BE": "BEL", "BG": "BGR", "CY": "CYP", "CZ": "CZE", "DE": "DEU", "DK": "DNK",
-    "EE": "EST", "ES": "ESP", "FI": "FIN", "FR": "FRA", "GR": "GRC", "HR": "HRV", "HU": "HUN",
-    "IE": "IRL", "IT": "ITA", "LT": "LTU", "LU": "LUX", "LV": "LVA", "MT": "MLT", "NL": "NLD",
-    "PL": "POL", "PT": "PRT", "RO": "ROU", "SE": "SWE", "SI": "SVN", "SK": "SVK",
-}
+EU_ISO3 = catalog.EU_ISO3
 HOME_COUNTRIES = {f"{v['name']} ({k})": k for k, v in sorted(kb.COUNTRIES.items(), key=lambda kv: kv[1]["name"])
                   if k != "EU"}
 LAST_FULL_YEAR = date.today().year - 2  # annual trade data lags about one year
@@ -164,7 +149,7 @@ with st.sidebar:
     st.markdown("**Frameworks**: PESTEL · CAGE · HHI · OLI entry modes")
     st.markdown("[🌐 Live showcase site](https://onurusalan.github.io/ai-market-entry-analyst/)")
     st.divider()
-    with st.expander("Optional: Claude AI narrative"):
+    with st.expander("Optional: Claude AI narrative (experimental)"):
         st.caption("The platform is fully free. If you have your own Anthropic API key, "
                    "an AI agent can also write a narrative report with live web research.")
         user_key = st.text_input("Anthropic API key", type="password",
@@ -230,6 +215,23 @@ with tab_report:
         k2.metric("Attractiveness", f"{s}/10")
         k3.metric("CAGE distance", data["cage"]["overall_label"])
         k4.metric("Risks flagged", len(data["risks"]))
+        if data.get("data_quality", {}).get("flags"):
+            st.info("**Data note:** " + " ".join(data["data_quality"]["flags"]))
+
+        with st.expander("💶 Landed-cost calculator", expanded=False):
+            a = data["landed_cost"]["assumptions"]
+            c1, c2, c3, c4, c5 = st.columns(5)
+            price = c1.number_input("Ex-works price / unit", 0.0, value=100.0, step=10.0)
+            freight = c2.number_input("Freight & insurance %", 0.0, value=float(a["freight_pct"]), step=0.5)
+            duty = c3.number_input("Import duty %", 0.0, value=float(a["duty_pct"]), step=0.1,
+                                   help=data["tariff"]["basis"])
+            vat = c4.number_input("Import VAT %", 0.0, value=float(a["vat_pct"]), step=0.5)
+            other = c5.number_input("Clearance & fees %", 0.0, value=float(a["other_pct"]), step=0.5)
+            lc = landed_cost(price, freight, duty, vat, other)
+            m1, m2, m3 = st.columns(3)
+            m1.metric("Landed cost / unit", f"{lc['landed_total']:,.2f}")
+            m2.metric("Before VAT", f"{lc['landed_ex_vat']:,.2f}", f"{lc['uplift_ex_vat_pct']:+.1f}% on ex-works", delta_color="off")
+            m3.metric("Import duty / unit", f"{lc['duty']:,.2f}")
         st.divider()
         st.markdown(body)
         d1, d2 = st.columns(2)

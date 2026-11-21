@@ -6,6 +6,7 @@ Sources
 - Eurostat Comext (DS-045409): EU imports by product (HS6) and partner country, in EUR
 - UN Comtrade (public preview API): China's imports by product and partner country, in USD
 - World Bank Indicators API: macro, logistics and governance indicators
+- World Bank WITS (UNCTAD TRAINS): MFN import tariffs by HS6 product
 
 Every response is cached on disk (data/cache) so repeated runs are fast
 and the public APIs are not hit more than necessary.
@@ -33,6 +34,9 @@ COMTRADE_URL = "https://comtradeapi.un.org/public/v1/preview/C/A/HS"
 COMTRADE_FULL_URL = "https://comtradeapi.un.org/data/v1/get/C/A/HS"
 COMTRADE_PARTNERS_URL = "https://comtradeapi.un.org/files/v1/app/reference/partnerAreas.json"
 WORLD_BANK_URL = "https://api.worldbank.org/v2/country/{countries}/indicator/{indicator}"
+WITS_URL = ("https://wits.worldbank.org/API/V1/SDMX/V21/datasource/TRN/reporter/{reporter}"
+            "/partner/000/product/{hs}/year/{year}/datatype/reported")
+WITS_REPORTERS = {"EU": "918", "CN": "156"}  # EU member states apply the common EU tariff
 
 EU27 = {
     "AT", "BE", "BG", "CY", "CZ", "DE", "DK", "EE", "ES", "FI", "FR", "GR", "HR", "HU",
@@ -54,6 +58,10 @@ def _is_cached(url: str, params) -> bool:
     return path.exists() and time.time() - path.stat().st_mtime < CACHE_TTL_SECONDS
 
 
+class NotFound(RuntimeError):
+    """The source answered but has no data for this query (HTTP 404)."""
+
+
 def _cached_get_json(url: str, params: dict | list | None = None, timeout: int = 90,
                      headers: dict | None = None):
     """GET a URL and return parsed JSON, using a simple on-disk cache."""
@@ -68,10 +76,14 @@ def _cached_get_json(url: str, params: dict | list | None = None, timeout: int =
             if resp.status_code == 429:  # rate limited (Comtrade preview: ~1 call / 2 s)
                 time.sleep(3 * (attempt + 1))
                 continue
+            if resp.status_code == 404:
+                raise NotFound(f"No data at {url}")
             resp.raise_for_status()
             data = resp.json()
             path.write_text(json.dumps(data))
             return data
+        except NotFound:
+            raise
         except (requests.RequestException, ValueError) as exc:
             last_error = exc
             time.sleep(1.5 * (attempt + 1))
@@ -96,7 +108,7 @@ def _parse_jsonstat(data: dict) -> pd.DataFrame:
     for flat_index, value in data.get("value", {}).items():
         flat_index = int(flat_index)
         coords = {}
-        for dim, size in zip(reversed(dims), reversed(sizes)):
+        for dim, size in zip(reversed(dims), reversed(sizes), strict=True):
             coords[dim] = categories[dim][flat_index % size]
             flat_index //= size
         coords["value"] = value
@@ -124,12 +136,22 @@ def eu_imports_by_partner(
     params = [
         ("format", "JSON"), ("lang", "en"), ("freq", "A"), ("reporter", reporter),
         ("product", hs_code), ("flow", "1"), ("indicators", "VALUE_IN_EUROS"),
+        ("indicators", "QUANTITY_IN_100KG"),
     ]
     params += [("time", str(y)) for y in range(start_year, end_year + 1)]
     data = _cached_get_json(EUROSTAT_URL, params)
     df = _parse_jsonstat(data)
     if df.empty:
         return df
+    if "indicators" in df:
+        keys = [c for c in df.columns if c not in ("indicators", "value")]
+        df = (df.pivot_table(index=keys, columns="indicators", values="value", aggfunc="sum", dropna=False)
+                .reset_index().rename_axis(None, axis=1))
+        df = df.rename(columns={"VALUE_IN_EUROS": "value", "QUANTITY_IN_100KG": "qty_100kg"})
+        df = df[df["value"].notna()]
+    if "qty_100kg" not in df:
+        df["qty_100kg"] = float("nan")
+    df["weight_kg"] = df["qty_100kg"] * 100
 
     df = df.rename(columns={"time": "year", "value": "value_eur"})
     df["year"] = df["year"].astype(int)
@@ -137,7 +159,7 @@ def eu_imports_by_partner(
     df["is_eu_member"] = df["partner"].isin(EU27)
     # Partner "GB" was intra-EU before 2020; Eurostat already handles this in aggregates.
     return df[
-        ["year", "partner", "partner_name", "value_eur", "product_name",
+        ["year", "partner", "partner_name", "value_eur", "weight_kg", "product_name",
          "is_aggregate", "is_eu_member"]
     ].sort_values(["year", "value_eur"], ascending=[True, False]).reset_index(drop=True)
 
@@ -240,6 +262,7 @@ def china_imports_by_partner(hs_code: str, years: list[int]) -> pd.DataFrame:
             "partner": info.get("iso2") or str(r["partnerCode"]),
             "partner_name": "World" if r["partnerCode"] == 0 else info.get("name", "Unknown"),
             "value_usd": float(r.get("primaryValue") or 0),
+            "weight_kg": float(r.get("netWgt") or 0) or None,
             "is_world": r["partnerCode"] == 0,
             "is_group": bool(info.get("is_group")),
             "is_eu_member": (info.get("iso2") in EU27),
@@ -345,3 +368,51 @@ def eu_members_total_imports(hs_code: str, years: list[int], partner: str = "WOR
     df = df.rename(columns={"time": "year", "value": "value_eur"})
     df["year"] = df["year"].astype(int)
     return df[["reporter", "year", "value_eur"]]
+
+
+# --------------------------------------------------------------------------- #
+# WITS (UNCTAD TRAINS): MFN import tariffs
+# --------------------------------------------------------------------------- #
+def _parse_wits(data: dict) -> dict | None:
+    """Extract the simple-average MFN rate and its min/max from a WITS SDMX-JSON answer."""
+    try:
+        series = next(iter(data["dataSets"][0]["series"].values()))
+        obs = next(iter(series["observations"].values()))
+    except (KeyError, IndexError, StopIteration):
+        return None
+    attrs = data["structure"]["attributes"].get("observation", [])
+    out = {"rate": obs[0]}
+    for pos, attr in enumerate(attrs, start=1):
+        if pos < len(obs) and obs[pos] is not None and attr.get("values"):
+            vals = attr["values"]
+            if obs[pos] < len(vals):
+                out[attr["id"]] = vals[obs[pos]].get("id") or vals[obs[pos]].get("name")
+    if out["rate"] is None:
+        return None
+
+    def num(key):
+        try:
+            return round(float(out[key]), 2)
+        except (KeyError, TypeError, ValueError):
+            return None
+    return {"rate_pct": round(float(out["rate"]), 2), "min_pct": num("MIN_RATE"), "max_pct": num("MAX_RATE"),
+            "tariff_lines": int(num("TOTALNOOFLINES") or 0) or None, "type": out.get("TARIFFTYPE", "MFN")}
+
+
+def mfn_tariff(target: str, hs_code: str, latest_year: int, lookback: int = 4) -> dict | None:
+    """
+    Most-favoured-nation applied tariff (simple average over national tariff lines) that the
+    target market charges on one HS6 product, from the latest year WITS has data for.
+    target: "EU" (or any EU member state) or "CN".
+    """
+    reporter = WITS_REPORTERS["CN" if target == "CN" else "EU"]
+    for year in range(latest_year, latest_year - lookback, -1):
+        url = WITS_URL.format(reporter=reporter, hs=hs_code, year=year)
+        try:
+            data = _cached_get_json(url, {"format": "JSON"}, timeout=60)
+        except RuntimeError:  # includes NotFound: no data for this year, try the previous one
+            continue
+        parsed = _parse_wits(data)
+        if parsed:
+            return {**parsed, "year": year, "source": "World Bank WITS / UNCTAD TRAINS (MFN applied, simple average)"}
+    return None

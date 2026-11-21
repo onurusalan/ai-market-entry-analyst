@@ -144,14 +144,19 @@ def pestel(target: str, sector: str, market: dict, target_p: dict | None) -> dic
 
 
 def risk_matrix(target: str, home: str, sector: str, market: dict, score: dict,
-                cage: dict, hs_code: str) -> list[dict]:
+                cage: dict, hs_code: str, tariff: dict | None = None) -> list[dict]:
     risks = []
+    rate = (tariff or {}).get("applicable_pct")
+    if rate is not None and rate >= 10:
+        risks.append({"risk": f"High import tariff ({rate:g}% applicable)", "likelihood": "High", "impact": "Medium",
+                      "mitigation": "Price the duty into the landed cost; consider local assembly, a bonded warehouse or sourcing from an FTA partner."})
     top = (market.get("top_suppliers_latest_year") or [{}])[0]
     if market.get("hhi", 0) > 1800 and top:
         risks.append({"risk": f"Dominant incumbent supplier ({top.get('partner_name')}, {top.get('share_pct')}% share)",
                       "likelihood": "High", "impact": "High",
                       "mitigation": "Differentiate on quality, service, sustainability and EU/China-specific certification rather than price."})
-    if (market.get("cagr_pct") or 0) < 0:
+    growth = market.get("growth_trend_pct", market.get("cagr_pct"))
+    if (growth or 0) < 0:
         risks.append({"risk": "Shrinking import demand", "likelihood": "High", "impact": "Medium",
                       "mitigation": "Target growing niches or member states; validate demand before fixed investment."})
     if hs_code in kb.TRADE_DEFENCE_NOTES or (target != "CN" and home == "CN") or (target == "CN" and home in kb.EU27):
@@ -172,13 +177,16 @@ def risk_matrix(target: str, home: str, sector: str, market: dict, score: dict,
     if cage["dimensions"]["Cultural"][0] != "Low":
         risks.append({"risk": "Brand and message mis-fit with local consumers", "likelihood": "Medium",
                       "impact": "Medium", "mitigation": "Local consumer testing, native-language content, local marketplace and social channels."})
+    if (market.get("data_quality") or {}).get("confidence") == "Low":
+        risks.append({"risk": "Thin or volatile trade data: market size and growth are uncertain", "likelihood": "Medium",
+                      "impact": "Medium", "mitigation": "Validate demand with distributor interviews and a small pilot before committing budget."})
     risks.append({"risk": "Currency volatility (EUR/CNY/USD)", "likelihood": "Medium", "impact": "Medium",
                   "mitigation": "Price in home currency where possible; hedge large contracts with forwards."})
     return risks
 
 
 def entry_mode(target: str, sector: str, company_size: str, score: dict, cage: dict,
-               market: dict) -> dict:
+               market: dict, position: dict | None = None) -> dict:
     """
     Entry-mode choice following the transaction-cost / OLI logic:
     higher distance and risk -> lower commitment; larger, attractive markets
@@ -222,11 +230,77 @@ def entry_mode(target: str, sector: str, company_size: str, score: dict, cage: d
         reasons += ["Balances control and cost for a mid-attractiveness market.",
                     "A distributor brings market access; a sales office protects the brand and gathers market intelligence."]
 
+    if position and position.get("present") and (position.get("share_pct") or 0) >= 5:
+        reasons.append(f"Your home country already supplies {position['share_pct']}% of this market (rank {position['rank']}): "
+                       "existing importers and logistics routes lower the cost of entry, so partner with established importers first.")
+    elif position is not None and not (position.get("present") and (position.get("share_pct") or 0) >= 1):
+        reasons.append("Your home country is not yet an established supplier here: buyers will need proof of quality, so plan for samples, certification and references.")
+    if position and position.get("price_position") == "Premium":
+        reasons.append("Home-country exports are priced above the market average: position on quality and brand, with selective distribution.")
+    elif position and position.get("price_position") == "Value":
+        reasons.append("Home-country exports are priced below the market average: compete on value through volume channels and B2B buyers.")
     if target == "EU":
         reasons.append("Within the EU one CE-compliant product and one importer of record give access to all 27 markets: start with 2-3 priority countries.")
     reasons.append(f"Inputs: attractiveness {s}/10, CAGE distance {cage['overall_label'].lower()}, "
                    f"institutional quality {inst}/10, company size {COMPANY_SIZES[company_size].lower()}.")
     return {"mode": mode, "reasons": reasons}
+
+
+def tariff_position(target: str, home: str, hs_code: str, mfn: dict | None) -> dict:
+    """MFN rate from WITS plus the rate this home country is likely to pay (FTA preference or MFN)."""
+    fta = (kb.CN_FTA_PARTNERS.get(home) if target == "CN" else kb.EU_FTA_PARTNERS.get(home))
+    if target != "CN" and home in kb.EU27:
+        return {"mfn": mfn, "applicable_pct": 0.0, "basis": "Intra-EU trade: no customs duty", "fta": None}
+    mfn_rate = mfn["rate_pct"] if mfn else None
+    if fta and mfn_rate is not None:
+        rate, basis = kb.FTA_DEFAULT_PREF_RATE, f"Preferential rate under {fta} (if rules of origin are met; MFN {mfn_rate}% otherwise)"
+    else:
+        rate, basis = mfn_rate, "MFN rate (no free-trade agreement)" if mfn_rate is not None else "Tariff data unavailable"
+    extra = kb.TRADE_DEFENCE_NOTES.get(hs_code) if (target != "CN" and home == "CN") or target == "CN" else None
+    return {"mfn": mfn, "applicable_pct": rate, "basis": basis, "fta": fta, "trade_defence": extra}
+
+
+FREIGHT_PCT = {"Low": 3.0, "Medium": 6.0, "High": 10.0}  # freight + insurance as % of goods value
+
+
+def landed_cost(goods_value: float, freight_pct: float, duty_pct: float, vat_pct: float,
+                other_pct: float = 1.5) -> dict:
+    """
+    Landed cost of an import, in the same currency as goods_value.
+    Customs value = goods + freight/insurance (CIF basis, as in EU and Chinese customs);
+    duty on the customs value; import VAT on customs value + duty; other = clearance, broker, port fees.
+    """
+    freight = goods_value * freight_pct / 100
+    customs_value = goods_value + freight
+    duty = customs_value * duty_pct / 100
+    other = goods_value * other_pct / 100
+    vat = (customs_value + duty) * vat_pct / 100
+    total = customs_value + duty + other + vat
+    return {"goods": round(goods_value, 2), "freight_insurance": round(freight, 2), "duty": round(duty, 2),
+            "clearance_other": round(other, 2), "import_vat": round(vat, 2), "landed_total": round(total, 2),
+            "landed_ex_vat": round(total - vat, 2), "uplift_ex_vat_pct": round((total - vat) / goods_value * 100 - 100, 1),
+            "assumptions": {"freight_pct": freight_pct, "duty_pct": duty_pct, "vat_pct": vat_pct, "other_pct": other_pct}}
+
+
+def competitive_position(home: str, market: dict) -> dict:
+    """Where the home country already stands in the target market, and at what price level."""
+    pos = (market.get("supplier_positions") or {}).get(home)
+    sup = {s["partner"]: s for s in market.get("top_suppliers_latest_year", [])}
+    avg_uv = market.get("unit_value_per_kg")
+    out = {"present": bool(pos), "rank": None, "share_pct": None, "share_change_pp": None,
+           "unit_value_per_kg": None, "market_unit_value_per_kg": avg_uv, "price_position": None}
+    if pos:
+        shares = pos["share_by_year"]
+        ly, fy = max(shares), min(shares)
+        out.update(rank=pos["rank"], suppliers=pos["suppliers"], share_pct=shares[ly],
+                   share_change_pp=round(shares[ly] - shares[fy], 2), first_year=fy)
+    uv = sup.get(home, {}).get("unit_value_per_kg")
+    if uv and avg_uv:
+        ratio = uv / avg_uv
+        out["unit_value_per_kg"] = uv
+        out["price_position"] = ("Premium" if ratio >= 1.25 else "Value" if ratio <= 0.8 else "Mid-market")
+        out["price_ratio"] = round(ratio, 2)
+    return out
 
 
 def verdict(score: dict, risks: list[dict]) -> tuple[str, str]:
@@ -287,13 +361,25 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
     target_p = analysis.profile_for(target)
     home_p = analysis.profile_for(home)
     score = analysis.attractiveness_score(market, target_p)
+    sensitivity = analysis.score_sensitivity(score)
     cage = cage_analysis(home, target, home_p, target_p)
-    risks = risk_matrix(target, home, sector, market, score, cage, hs_code)
-    mode = entry_mode(target, sector, company_size, score, cage, market)
+    tariff = tariff_position(target, home, hs_code, analysis.tariff_for(target, hs_code, market["latest_year"]))
+    position = competitive_position(home, market)
+    risks = risk_matrix(target, home, sector, market, score, cage, hs_code, tariff)
+    mode = entry_mode(target, sector, company_size, score, cage, market, position)
     v, v_reason = verdict(score, risks)
+    dq = market.get("data_quality") or {"confidence": "High", "flags": []}
+    kb_info = kb.kb_status()
 
     ranking = analysis.rank_eu_members(hs_code, start_year, end_year) if target == "EU" else []
     priority = [_name(r["member"]) for r in ranking[:3]]
+    vat_country = "CN" if target == "CN" else (target if target in kb.VAT_RATES else (ranking[0]["member"] if ranking else "DE"))
+    cost = landed_cost(100.0, FREIGHT_PCT[cage["dimensions"]["Geographic"][0]],
+                       tariff["applicable_pct"] if tariff["applicable_pct"] is not None else 0.0,
+                       kb.VAT_RATES.get(vat_country, 20))
+    growth = market.get("growth_trend_pct")
+    if growth is None:
+        growth = market.get("cagr_pct")
 
     cur = market["currency"]
     product = product_label or market.get("product_name") or f"HS {hs_code}"
@@ -304,7 +390,7 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
 
     md: list[str] = [f"# {title}", ""]
     md.append(f"*Company: {company or 'n/a'} · Home country: {_name(home)} · Size: {COMPANY_SIZES[company_size]} · "
-              f"HS {hs_code} ({kb.SECTOR_LABELS[sector]}) · Generated {date.today().isoformat()}*")
+              f"HS {hs_code} ({kb.SECTOR_LABELS[sector]}) · Trade data {market['years'][0]}-{ly}*")
     md.append("")
 
     # 1. Executive summary
@@ -314,10 +400,16 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
            f"**Recommended entry mode:** {mode['mode']}", ""]
     key_points = [
         f"Import market of {money(market['latest_market_size'], cur)} in {ly}"
-        + (f", growing {market['cagr_pct']}% a year since {market['years'][0]}." if market['cagr_pct'] is not None else "."),
+        + (f", trend growth {growth:+.1f}% a year (data confidence: {dq['confidence'].lower()})." if growth is not None else "."),
         f"Supply is {market['hhi_label'].split(' (')[0].lower()} (HHI {market['hhi']:,.0f}); "
         f"top supplier {top[0]['partner_name']} holds {top[0]['share_pct']}%." if top else "No supplier data.",
         f"CAGE distance from {_name(home)}: {cage['overall_label'].lower()}.",
+        (f"Applicable import duty: {tariff['applicable_pct']:g}% ({tariff['basis']}); landed cost ≈ "
+         f"{cost['uplift_ex_vat_pct']:+.0f}% over ex-works price before VAT." if tariff["applicable_pct"] is not None
+         else "Import duty: check the official tariff database."),
+        (f"{_name(home)} is supplier #{position['rank']} with {position['share_pct']}% of imports"
+         + (f", priced {position['price_position'].lower()} ({position['price_ratio']}x market average per kg)." if position.get('price_position') else ".")
+         if position["present"] else f"{_name(home)} is not yet a recorded supplier to this market."),
     ]
     if target == "EU" and "china_share_pct_by_year" in market:
         key_points.append(f"China supplies {market['china_share_pct_by_year'].get(ly)}% of extra-EU imports.")
@@ -332,12 +424,23 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
            f"Market size is measured as imports into {target_name} ({market['source']}). Imports show demand served from abroad, not total consumption.", "",
            f"| Year | Imports ({cur}) |", "|---|---|"]
     md += [f"| {y} | {money(val, cur)} |" for y, val in market["import_market_size_by_year"].items()]
-    md += ["", f"CAGR {market['years'][0]}-{ly}: **{market['cagr_pct']}%**." if market["cagr_pct"] is not None else "", ""]
+    gw = dq.get("growth_window") or market["years"]
+    md += ["", f"Growth {gw[0]}-{gw[1]}: trend **{growth:+.2f}%** a year (log-linear fit over all years)"
+           + (f"; end-point CAGR {market['cagr_pct']:+.2f}%." if market.get("cagr_pct") is not None else ".")
+           if growth is not None else "Growth: not enough data.", ""]
+    md += [f"**Data confidence: {dq['confidence']}.** " + ("No quality issues detected." if not dq["flags"] else
+           "The growth signal in the score is shrunk towards neutral because:"), ""]
+    md += [f"- {f}" for f in dq["flags"]] + ([""] if dq["flags"] else [])
 
     # 3. Competition
+    sym = "€" if cur == "EUR" else "$"
+    uv_fmt = lambda v: f"{sym}{v:,.2f}" if v else "n/a"  # noqa: E731
     md += ["## 3. Competitive Landscape", "",
-           f"| Rank | Supplier | Imports {ly} | Share |", "|---|---|---|---|"]
-    md += [f"| {i} | {s['partner_name']} | {money(s['value'], cur)} | {s['share_pct']}% |" for i, s in enumerate(top, 1)]
+           f"| Rank | Supplier | Imports {ly} | Share | Unit value per kg |", "|---|---|---|---|---|"]
+    md += [f"| {i} | {'**' + s['partner_name'] + '**' if s['partner'] == home else s['partner_name']} | {money(s['value'], cur)} | "
+           f"{s['share_pct']}% | {uv_fmt(s.get('unit_value_per_kg'))} |" for i, s in enumerate(top, 1)]
+    if market.get("unit_value_per_kg"):
+        md += ["", f"Market average unit value: **{uv_fmt(market['unit_value_per_kg'])}/kg**. Unit values show each supplier's price level (product mix also matters)."]
     md += ["", f"**HHI {market['hhi']:,.0f}: {market['hhi_label']}.** "
            + ("A few suppliers dominate, so a newcomer must win share from incumbents or exploit buyers' wish to diversify supply (EU 'de-risking')."
               if market["hhi"] > 1800 else
@@ -350,6 +453,20 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
         trend = market["eu27_share_pct_by_year"]
         first_y = min(trend)
         md += [f"The EU-27's share of China's imports moved from {trend[first_y]}% ({first_y}) to {trend[ly]}% ({ly}).", ""]
+
+    # 3a. Starting position of the home country
+    md += [f"### Your starting position: {_name(home)}", ""]
+    if position["present"]:
+        md += [f"- Supplier **#{position['rank']} of {position.get('suppliers')}** with **{position['share_pct']}%** of imports in {ly} "
+               f"({position['share_change_pp']:+.2f} pp since {position.get('first_year')})."]
+    else:
+        md += [f"- {_name(home)} does not appear among recorded suppliers in {ly}: a greenfield entry."]
+    if position.get("price_position"):
+        md += [f"- Price level: **{position['price_position']}**, {uv_fmt(position['unit_value_per_kg'])}/kg vs a market average of "
+               f"{uv_fmt(position['market_unit_value_per_kg'])}/kg ({position['price_ratio']}x)."]
+    if tariff.get("fta"):
+        md += [f"- Trade agreement: **{tariff['fta']}** gives preferential access if rules of origin are met."]
+    md += [""]
 
     # 3b. Priority markets
     if ranking:
@@ -371,11 +488,41 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
 
     # 6. Regulation
     reg_src = kb.CN_REGULATION if target == "CN" else kb.EU_REGULATION
-    md += ["## 6. Tariffs, Trade Defence & Regulation", ""]
+    md += ["## 6. Tariffs, Trade Defence & Regulation", "", "### Import duty", ""]
+    mfn = tariff.get("mfn")
+    if mfn:
+        rng = f" (range {mfn['min_pct']:g}-{mfn['max_pct']:g}% across {mfn['tariff_lines']} national tariff lines)" \
+            if mfn.get("min_pct") is not None and mfn.get("max_pct") is not None and mfn["min_pct"] != mfn["max_pct"] else ""
+        md += [f"- **MFN applied tariff of {target_name}: {mfn['rate_pct']:g}%**{rng}, {mfn['year']} ({mfn['source']})."]
+    else:
+        md += ["- MFN tariff: not available from WITS for this product; check the official tariff database."]
+    if tariff["applicable_pct"] is not None:
+        md += [f"- **Likely rate for a company from {_name(home)}: {tariff['applicable_pct']:g}%** ({tariff['basis']})."]
+    md += [""]
     if hs_code in kb.TRADE_DEFENCE_NOTES:
-        md += [f"> ⚠️ **Trade defence:** {kb.TRADE_DEFENCE_NOTES[hs_code]}", ""]
+        checked, link = kb.TRADE_DEFENCE_META.get(hs_code, (kb.KB_AS_OF, None))
+        md += [f"> ⚠️ **Trade policy note (checked {checked}):** {kb.TRADE_DEFENCE_NOTES[hs_code]}"
+               + (f" [Official source]({link})." if link else ""), ""]
+    a = cost["assumptions"]
+    md += ["### Indicative landed cost (per 100 of ex-works value)", "",
+           "| Item | Amount | Assumption |", "|---|---|---|",
+           f"| Goods (ex-works) | {cost['goods']:.2f} | |",
+           f"| Freight & insurance | {cost['freight_insurance']:.2f} | {a['freight_pct']:g}% for {cage['dimensions']['Geographic'][0].lower()} distance |",
+           f"| Import duty | {cost['duty']:.2f} | {a['duty_pct']:g}% on CIF value |",
+           f"| Clearance, broker, port | {cost['clearance_other']:.2f} | {a['other_pct']:g}% |",
+           f"| Import VAT | {cost['import_vat']:.2f} | {a['vat_pct']:g}% ({_name(vat_country)}), usually recoverable for VAT-registered importers |",
+           f"| **Landed cost** | **{cost['landed_total']:.2f}** | **{cost['landed_ex_vat']:.2f} before VAT ({cost['uplift_ex_vat_pct']:+.1f}%)** |", ""]
+    if target == "CN" and sector in ("vehicles", "cosmetics"):
+        md += ["*China also levies consumption tax on cars and some cosmetics; add it to the model where relevant.*", ""]
+    md += ["### Regulatory checklist", ""]
     md += [f"- {r}" for r in reg_src.get(sector, []) + reg_src["_all"]]
-    md += ["", "**Verify current duties and requirements:**"]
+    srcs = kb.REG_SOURCES["CN" if target == "CN" else "EU"]
+    official = srcs.get(sector, []) + srcs.get("_all", [])
+    if official:
+        md += ["", "**Official texts:** " + " · ".join(f"[{label}]({url})" for label, url in official)]
+    md += ["", f"*Regulatory notes compiled {kb_info['as_of']} from official sources"
+           + (" and now **due for review**" if kb_info["stale"] else "") + "; not legal advice.*", "",
+           "**Verify current duties and requirements:**"]
     md += [f"- [{label}]({url})" for label, url in kb.VERIFY_SOURCES["CN" if target == "CN" else "EU"]] + [""]
 
     # 7. Risks
@@ -392,13 +539,22 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
     md += ["## 9. Attractiveness Score Breakdown", "", "| Component | Weight | Score |", "|---|---|---|"]
     md += [f"| {names[k]} | {int(score['weights'][k] * 100)}% | {val}/10 |" for k, val in score["sub_scores"].items()]
     md += [f"| **Total** | | **{score['score_0_10']}/10** |", ""]
+    md += ["### Sensitivity to the weights", "",
+           "The weights are a judgement call, so the same sub-scores are re-weighted under alternative schemes:", "",
+           "| Weighting scheme | Score |", "|---|---|"]
+    md += [f"| {r['scenario']} | {r['score']} |" for r in sensitivity["scenarios"]]
+    md += ["", (f"**Robust:** the score stays between {sensitivity['min']} and {sensitivity['max']}, and the verdict band does not change."
+                if sensitivity["robust"] else
+                f"**Weight-sensitive:** the score ranges from {sensitivity['min']} to {sensitivity['max']} and crosses a verdict "
+                f"threshold ({', '.join(b.lower() for b in sensitivity['bands'])}), so treat the verdict as borderline."), ""]
 
     # 10. Plan
     md += ["## 10. 90-Day Action Plan", ""]
     md += [f"{i}. {step}" for i, step in enumerate(action_plan(target, sector, mode["mode"], priority), 1)] + [""]
 
     md += ["## Sources", "",
-           f"- {market['source']}, accessed {date.today().isoformat()}",
+           f"- {market['source']}, trade data {market['years'][0]}-{ly}",
+           "- World Bank WITS / UNCTAD TRAINS (MFN tariffs)",
            "- World Bank World Development Indicators, Logistics Performance Index, Worldwide Governance Indicators",
            "- Regulatory notes: curated from official EU and Chinese sources; verify with the links in section 6",
            "- Frameworks: PESTEL; CAGE distance (Ghemawat, 2001); HHI bands (US DOJ/FTC 2023); entry-mode logic (Dunning's OLI, transaction-cost theory)", ""]
@@ -407,4 +563,6 @@ def generate_report(hs_code: str, target: str, home: str, company: str = "",
         "market": market, "score": score, "cage": {k: v for k, v in cage.items() if k != "dimensions"},
         "cage_dimensions": {k: v[0] for k, v in cage["dimensions"].items()},
         "risks": risks, "entry_mode": mode, "verdict": v, "ranking": ranking, "sector": sector,
+        "tariff": tariff, "landed_cost": cost, "vat_country": vat_country, "position": position,
+        "sensitivity": sensitivity, "data_quality": dq, "kb": kb_info, "growth_pct": growth,
     })

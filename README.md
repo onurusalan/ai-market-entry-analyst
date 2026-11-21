@@ -3,11 +3,13 @@
 [![CI](https://github.com/onurusalan/ai-market-entry-analyst/actions/workflows/ci.yml/badge.svg)](https://github.com/onurusalan/ai-market-entry-analyst/actions/workflows/ci.yml)
 **Live app:** https://onurusalan.github.io/ai-market-entry-analyst/ (interactive analyzer, no sign-up)
 
-**A data platform that turns official trade statistics into consulting-style market entry reports for the EU and Chinese markets.**
+**A data platform that turns official trade statistics into consulting-style market entry decisions for the EU and Chinese markets.**
 
-Pick a product (HS code), a target market (EU-27, one member state or China) and the company's home country. The platform pulls live data from **Eurostat, UN Comtrade and the World Bank**, applies International Business frameworks in code (**PESTEL, CAGE distance, HHI, OLI entry-mode logic**) and produces a report with a clear verdict, an EU-27 country ranking, a risk matrix and a 90-day action plan.
+Pick a product, a target market (EU-27 or China), the company's home country and its size. The platform pulls data from **Eurostat, UN Comtrade, the World Bank and WITS**, applies International Business frameworks in code (**PESTEL, CAGE distance, HHI, OLI entry-mode logic**) and returns a verdict, the applicable import duty, a landed-cost model, the company's competitive starting position, a risk matrix and a 90-day plan.
 
-Everything runs on **free public data**. No paid service is needed. An optional Claude AI agent can add live web research if you bring your own API key.
+Everything runs on **free public data**. No paid service is needed.
+
+![Home page with the report generator](docs/img/screenshot-home.jpg)
 
 ---
 
@@ -15,59 +17,84 @@ Everything runs on **free public data**. No paid service is needed. An optional 
 
 | | Feature | Details |
 |---|---|---|
-| 📄 | **Market entry report** | Verdict (Enter / Enter with caution / Do not enter now), market sizing, competition, PESTEL, CAGE, regulation checklist, risk matrix, entry mode, 90-day plan |
-| 📊 | **Market dashboard** | Import market size and CAGR, top suppliers, China's (or the EU's) share over time, EU map of imports from China |
-| 🇪🇺 | **EU-27 ranking** | Ranks all member states on demand, growth, purchasing power, logistics and institutions |
-| 📈 | **Supply concentration (HHI)** | Herfindahl-Hirschman Index with DOJ/FTC 2023 bands to quantify supplier dependency |
-| 🎯 | **Transparent scoring** | 0-10 attractiveness score with published weights and formulas |
-| 🌐 | **Interactive web app** | Analyzer on GitHub Pages: 10 products × EU-27/China × 16 home countries × 3 company sizes (480 reports), with charts, EU map, CAGE and risk register, PDF export, dark mode. Rebuilt monthly from live data by GitHub Actions |
-| 🤖 | **Optional AI agent** | Claude tool-use agent with web search (bring your own key) |
+| 📄 | **Entry report** | Verdict, market sizing, competition, starting position, PESTEL, CAGE, tariffs, regulation checklist, risk matrix, entry mode, 90-day plan |
+| 💶 | **Tariffs & landed cost** | MFN applied tariff from WITS (UNCTAD TRAINS), FTA preferences, and an interactive landed-cost calculator (freight, duty, trade-defence duty, VAT, fees) |
+| 🧭 | **Competitive position** | The home country's rank, market share trend and price level (unit value per kg vs the market average) |
+| 🛡️ | **Data-quality checks** | Flags small markets, HS-code changes (HS2022) and low base years; growth is measured with a log-linear trend and shrunk towards neutral when data are unreliable |
+| ⚖️ | **Sensitivity analysis** | Re-scores every case under six weighting schemes and flags verdicts that depend on the weights |
+| ✅ | **Backtest** | Out-of-sample test of the EU-27 country ranking against what actually happened in the following four years |
+| 🇪🇺 | **EU-27 ranking** | Ranks all member states on demand, growth, purchasing power, logistics and institutions, with a map |
+| 📈 | **Insights** | Cross-product data stories: the EU's dependency on Chinese supply and the EU's position in China |
+| 🌐 | **Web app** | 10 products × EU-27/China × 16 home countries × 3 company sizes = 480 reports on GitHub Pages; dark mode, PDF export, mobile layout, accessible charts |
+| 🖥️ | **Streamlit app** | Any HS6 code and year range, market dashboard, ranking and calculator (run locally) |
+| 🤖 | **Optional AI agent** | Experimental Claude tool-use agent with web search (bring your own key) |
+
+![Report page: verdict, KPIs and data note](docs/img/screenshot-report.jpg)
+
+![Landed-cost calculator](docs/img/screenshot-calculator.jpg)
 
 ### Case studies on the live site
 
 | Case | Verdict | Recommended entry mode |
 |---|---|---|
-| 🚲 E-bikes: Taiwan → EU-27 | Enter with caution | Exclusive distributor + small sales office |
 | 🚗 Battery-electric cars: China → EU-27 | Enter with caution | Wholly owned sales subsidiary |
+| 🚲 E-bikes: Taiwan → EU-27 | Enter with caution | Exclusive distributor + small sales office |
 | 🧴 Skincare: France → China | Enter | Cross-border e-commerce first, then a distributor |
-| 🍷 Bottled wine: Italy → China | Enter with caution | Exclusive Chinese importer-distributor |
 | 💊 Medicaments: Germany → China | Enter | Joint venture or licensing |
 | 🔋 Lithium-ion batteries: Korea → EU-27 | Enter with caution | Wholly owned sales subsidiary |
 | 🌡️ Heat pumps: Japan → EU-27 | Enter | Wholly owned sales subsidiary |
+| 🍷 Bottled wine: Italy → China | Enter with caution | Exclusive Chinese importer-distributor |
 | 🪑 Wooden furniture: Vietnam → EU-27 | Enter with caution | Exporting via importers and distributors |
 
 *(Verdicts are regenerated from the latest data each month.)*
 
-## 🧪 Example insight (real data)
+## 🧪 Example insights (real data)
 
-**E-bikes (HS 871160) → EU-27, 2024:** extra-EU imports were **€1.57 bn**. **China supplied 53.5%**, Taiwan 22.5% and Vietnam 8.1%. **HHI is 3,476 (highly concentrated)**, a supplier-dependency risk for EU buyers and an opening for non-Chinese suppliers. The top-ranked entry markets are Austria, Germany and the Netherlands. *(Source: Eurostat Comext DS-045409.)*
+- **E-bikes (HS 871160) → EU-27:** extra-EU imports of **€1.57 bn** in 2024; **China supplies 53.5%**, Taiwan 22.5%. HHI **3,476** (highly concentrated). Taiwanese e-bikes sell at **€57.6/kg vs a €17.3/kg market average** (premium position, 3.3×). The EU's MFN duty is **6%**, so landed cost is about **+18% on ex-works** before VAT.
+- **Clean-tech dependency:** China supplies **97% of the EU's solar-module imports, 86% of lithium-ion batteries and 60% of heat pumps**.
+- **Bottled wine → China:** China's MFN tariff is **14%**; with freight and fees an Italian bottle lands at about **+27% on ex-works** before VAT, while Australia (duty-free under its FTA) holds the top supplier position.
+
+## ✅ Validation
+
+The EU-27 ranking was rebuilt with data up to 2020 only and compared with 2020-2024 outcomes for 9 products:
+
+| Metric | Result |
+|---|---|
+| Rank correlation with **new demand** (absolute import gain) | **+0.52** on average (up to 0.92 for EVs) |
+| Predicted top-5 markets among the actual top-5 | **24 of 45** |
+| Rank correlation with the **growth rate** | **−0.44** |
+
+Reading: the ranking is a good guide to **where demand volume will appear**, but not to the fastest-growing markets (small, fast-growing markets tend to cool down). That is why the score uses growth only as one of five components. Caveat: country fundamentals use current values.
 
 ## 🏗️ Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
 │ Data layer: src/data_sources.py                                  │
-│  Eurostat Comext (JSON-stat) · UN Comtrade · World Bank WDI/WGI  │
+│  Eurostat Comext · UN Comtrade · World Bank WDI/WGI · WITS       │
 │  retries · rate-limit handling · on-disk cache                   │
 └──────────────────────────────┬───────────────────────────────────┘
                                ↓
 ┌──────────────────────────────────────────────────────────────────┐
 │ Analysis layer: src/analysis.py                                  │
-│  market size · CAGR · supplier shares · HHI · score · EU ranking │
+│  market size · trend growth · data-quality flags · unit values   │
+│  HHI · score · sensitivity · EU-27 ranking · backtest            │
 └──────────────────────────────┬───────────────────────────────────┘
                                ↓
 ┌──────────────────────────────────────────────────────────────────┐
 │ Decision layer: src/report_engine.py + src/knowledge.py          │
-│  PESTEL · CAGE · risk matrix · entry-mode rules · 90-day plan    │
-│  curated regulation knowledge base (EU and China)                │
+│  PESTEL · CAGE · tariffs · landed cost · competitive position    │
+│  risk matrix · entry-mode rules · 90-day plan                    │
+│  curated regulation knowledge base with sources and review date  │
 │  (optional) src/agent.py: Claude tool-use agent + web search     │
 └──────────────────────────────┬───────────────────────────────────┘
                                ↓
 ┌───────────────────────────────┐   ┌──────────────────────────────┐
-│ app.py: Streamlit web app     │   │ scripts/build_site.py →      │
-│ report · dashboard · ranking  │   │ JSON data + site/ front end  │
-│ (any HS6 code, run locally)   │   │ (HTML/CSS/JS, Plotly) → Pages│
+│ app.py: Streamlit app         │   │ scripts/build_site.py →      │
+│ any HS6 code, run locally     │   │ JSON data + site/ front end  │
+│                               │   │ (HTML/CSS/JS, Plotly) → Pages│
 └───────────────────────────────┘   └──────────────────────────────┘
+        both use src/catalog.py (one product and country catalogue)
 ```
 
 ## 🚀 Quick start
@@ -76,22 +103,23 @@ Everything runs on **free public data**. No paid service is needed. An optional 
 git clone https://github.com/onurusalan/ai-market-entry-analyst.git
 cd ai-market-entry-analyst
 python3 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.txt -r requirements-dev.txt
 streamlit run app.py
 ```
 
 Other commands:
 
 ```bash
-pytest -q                       # offline unit tests
+pytest -q                       # offline tests (recorded API answers, no network)
+ruff check .                    # lint
 python scripts/build_site.py    # rerun all 480 reports and rebuild the web app into docs/
 ```
 
-Optional environment variables (see `.env.example`): `COMTRADE_API_KEY` (free, faster China data) and `ANTHROPIC_API_KEY` (AI narrative).
+Optional environment variables (see `.env.example`): `COMTRADE_API_KEY` (free, faster China data) and `ANTHROPIC_API_KEY` (experimental AI narrative).
 
-## ☁️ Deploy the interactive app (free)
+## ☁️ Deploy the Streamlit app (free)
 
-The analyzer web app is already live on GitHub Pages. To also host the Streamlit app (any HS6 code, custom year ranges):
+The web app is already live on GitHub Pages. To also host the Streamlit app (any HS6 code, custom year ranges):
 
 1. Sign in at [share.streamlit.io](https://share.streamlit.io) with GitHub.
 2. **Create app** → repository `onurusalan/ai-market-entry-analyst`, branch `main`, file `app.py` → **Deploy**.
@@ -102,6 +130,8 @@ No secrets are required: the app runs fully on public data.
 
 **Market size.** Imports into the target market proxy addressable demand: extra-EU imports (Eurostat `EXT_EU27_2020`) for the EU and China-reported imports (UN Comtrade, excluding re-imports of Chinese goods) for China.
 
+**Growth and data quality.** Growth is the log-linear trend over all usable years (less sensitive to one unusual year than the end-point CAGR, which is also shown). Years below 5% of the peak are treated as a series break (for example a new HS2022 code). Markets below 50 million and low base years are flagged. Confidence is High, Medium or Low; at Medium the growth sub-score is shrunk 25% towards neutral, at Low 50%.
+
 **HHI.** Sum of squared supplier shares (%): below 1,000 is unconcentrated, 1,000 to 1,800 is moderately concentrated, above 1,800 is highly concentrated.
 
 **Attractiveness score (0-10).**
@@ -109,29 +139,40 @@ No secrets are required: the app runs fully on public data.
 | Component | Weight | Formula |
 |---|---|---|
 | Market size | 25% | 2 × (log10(value) − 6) |
-| Growth | 25% | 5 + CAGR / 3 |
+| Growth | 25% | 5 + trend growth / 3 (shrunk by data confidence) |
 | Competitive openness | 20% | 10 − HHI / 1000 |
 | Institutional quality | 15% | mean of 4 World Bank WGI scores, rescaled |
 | Logistics | 15% | (LPI − 1) × 2.5 |
 
+**Sensitivity.** The sub-scores are re-weighted under equal, size-led, growth-led, risk-averse and niche-entrant schemes. If the verdict band changes, the report labels the verdict as borderline.
+
+**Tariffs and landed cost.** MFN applied tariff (simple average across national tariff lines) from WITS / UNCTAD TRAINS, latest available year. FTA partners are assumed to qualify for 0% if rules of origin are met. Landed cost = goods + freight/insurance (3/6/10% by distance) + duty on the CIF value + clearance (1.5%) + import VAT on CIF + duty.
+
+**Competitive position.** The home country's rank and share among all suppliers, its share change over the period, and its unit value per kg vs the market average (premium ≥ 1.25×, value ≤ 0.8×).
+
 **CAGE distance** (Ghemawat, 2001). Cultural distance from language-family overlap. Administrative distance from single market, FTA or none, plus the governance gap. Geographic distance between capitals: below 1,500 km is low, below 5,000 km is medium. Economic distance from the GDP per capita ratio: below 1.5× is low, below 3× is medium.
 
-**Entry mode.** Rules follow transaction-cost and OLI logic. High distance, low attractiveness or small firms lead to low-commitment modes (exporting, distributors, cross-border e-commerce). Attractive markets with strong institutions and large firms lead to subsidiaries or a WFOE. Regulated sectors in China (pharma, medtech) lead to a JV or licensing.
+**Entry mode.** Rules follow transaction-cost and OLI logic. High distance, low attractiveness or small firms lead to low-commitment modes (exporting, distributors, cross-border e-commerce). Attractive markets with strong institutions and large firms lead to subsidiaries or a WFOE. Regulated sectors in China (pharma, medtech) lead to a JV or licensing. The home country's existing presence and price level refine the reasoning.
 
 **EU-27 ranking.** Demand 40% (total imports, log scale), growth 25%, GDP per capita 15%, logistics 10%, institutions 10%.
 
-**Limitations.** Imports are a demand proxy, not total consumption. Hub countries (Netherlands, Belgium) re-export. Regulatory notes are curated and must be verified on the official sources linked in each report.
+**Regulatory knowledge base.** Each sector note links to the official legal text or regulator; notes carry a compilation date and are flagged as due for review after 12 months.
+
+**Limitations.** Imports are a demand proxy, not total consumption. Hubs such as the Netherlands and Belgium re-export. Unit values mix product grades. WITS has no partner-specific preferential rates in its public API, so FTA rates are an assumption. Regulatory notes are curated and must be verified on the official sources linked in each report; they are not legal advice.
 
 ## 🗺️ Roadmap
 
-- [ ] Tariff lookup from EU TARIC and China's tariff schedule
+- [x] Tariff lookup (WITS / UNCTAD TRAINS MFN rates)
+- [x] Landed-cost calculator (duties, freight, VAT, trade-defence duty)
+- [x] Data-quality checks, sensitivity analysis and backtest
+- [x] PDF export (print-optimised report page)
+- [ ] Partner-specific preferential rates from EU TARIC and China's tariff schedule
 - [ ] Trade-defence tracker (EU anti-dumping and anti-subsidy cases)
-- [ ] Landed-cost calculator (duties, freight, VAT, FX)
-- [ ] PDF export with charts
+- [ ] Member-state targets and services trade
 
 ## 🛠️ Tech stack
 
-Python · pandas · REST APIs (Eurostat SDMX/JSON-stat, UN Comtrade, World Bank) · Streamlit · Plotly · vanilla HTML/CSS/JavaScript · pytest · GitHub Actions · GitHub Pages · optional Anthropic Claude API
+Python · pandas · REST APIs (Eurostat SDMX/JSON-stat, UN Comtrade, World Bank, WITS SDMX) · Streamlit · Plotly · vanilla HTML/CSS/JavaScript · pytest · ruff · GitHub Actions · GitHub Pages · optional Anthropic Claude API
 
 ---
 

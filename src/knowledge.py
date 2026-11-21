@@ -63,6 +63,13 @@ COUNTRIES: dict[str, dict] = {
 
 EU27 = [c for c, v in COUNTRIES.items() if v["bloc"] == "EU" and c != "EU"]
 
+# HS6 codes introduced in the HS2022 revision (new code -> where the goods were classified before).
+HS2022_NEW_CODES = {
+    "854141": "854140", "854142": "854140", "854143": "854140", "854149": "854140",
+    "854151": "854150", "854159": "854150", "850590": "850590",
+    "880621": "880240", "880622": "880240", "880691": "880240",
+}
+
 # Trade agreements in force that cut tariffs between a home country and the target.
 # (Kept to well-established agreements; verify details on the sources listed below.)
 EU_FTA_PARTNERS = {
@@ -222,6 +229,78 @@ TRADE_DEFENCE_NOTES = {
     "220830": "China imposed anti-dumping measures on EU brandy (2024-2025), with price undertakings for many producers.",
     "220421": "EU wine faces strong competition from Australia in China since China lifted its duties on Australian wine in 2024.",
 }
+
+# --------------------------------------------------------------------------- #
+# Provenance of the curated notes
+# --------------------------------------------------------------------------- #
+KB_AS_OF = "2026-11-21"      # date the regulatory and trade-defence notes were last compiled
+KB_MAX_AGE_DAYS = 365        # after this, reports flag the notes as due for review
+
+# Official legal texts / regulator pages behind the sector notes above.
+REG_SOURCES = {
+    "EU": {
+        "_all": [("GPSR, Regulation (EU) 2023/988", "https://eur-lex.europa.eu/eli/reg/2023/988/oj"),
+                 ("Union Customs Code", "https://taxation-customs.ec.europa.eu/customs-4/union-customs-code_en"),
+                 ("Forced Labour Regulation (EU) 2024/3015", "https://eur-lex.europa.eu/eli/reg/2024/3015/oj")],
+        "agrifood": [("Food Information to Consumers, Reg. 1169/2011", "https://eur-lex.europa.eu/eli/reg/2011/1169/oj"),
+                     ("EU Deforestation Regulation", "https://environment.ec.europa.eu/topics/forests/deforestation/regulation-deforestation-free-products_en")],
+        "chemicals": [("REACH (ECHA)", "https://echa.europa.eu/regulations/reach/understanding-reach")],
+        "pharma": [("European Medicines Agency", "https://www.ema.europa.eu/en/human-regulatory-overview")],
+        "cosmetics": [("Cosmetics Regulation (EC) 1223/2009", "https://eur-lex.europa.eu/eli/reg/2009/1223/oj")],
+        "textiles": [("Textile Labelling Regulation 1007/2011", "https://eur-lex.europa.eu/eli/reg/2011/1007/oj"),
+                     ("Ecodesign for Sustainable Products Regulation", "https://commission.europa.eu/energy-climate-change-environment/standards-tools-and-labels/products-labelling-rules-and-requirements/ecodesign-sustainable-products-regulation_en")],
+        "metals": [("CBAM", "https://taxation-customs.ec.europa.eu/carbon-border-adjustment-mechanism_en")],
+        "minerals_energy": [("CBAM", "https://taxation-customs.ec.europa.eu/carbon-border-adjustment-mechanism_en")],
+        "machinery": [("Machinery Regulation (EU) 2023/1230", "https://eur-lex.europa.eu/eli/reg/2023/1230/oj")],
+        "electronics": [("RoHS Directive", "https://environment.ec.europa.eu/topics/waste-and-recycling/rohs-directive_en"),
+                        ("Battery Regulation (EU) 2023/1542", "https://eur-lex.europa.eu/eli/reg/2023/1542/oj")],
+        "vehicles": [("Vehicle type-approval, Reg. (EU) 2018/858", "https://eur-lex.europa.eu/eli/reg/2018/858/oj"),
+                     ("Battery Regulation (EU) 2023/1542", "https://eur-lex.europa.eu/eli/reg/2023/1542/oj")],
+        "medtech": [("Medical Device Regulation (EU) 2017/745", "https://eur-lex.europa.eu/eli/reg/2017/745/oj")],
+        "consumer": [("GPSR, Regulation (EU) 2023/988", "https://eur-lex.europa.eu/eli/reg/2023/988/oj")],
+        "materials": [("EU Deforestation Regulation", "https://environment.ec.europa.eu/topics/forests/deforestation/regulation-deforestation-free-products_en")],
+    },
+    "CN": {
+        "_all": [("General Administration of Customs (GACC)", "http://english.customs.gov.cn/"),
+                 ("MOFCOM: foreign investment and the Negative List", "http://english.mofcom.gov.cn/")],
+        "agrifood": [("GACC: overseas food manufacturer registration", "http://english.customs.gov.cn/")],
+        "pharma": [("National Medical Products Administration (NMPA)", "https://english.nmpa.gov.cn/")],
+        "cosmetics": [("NMPA: cosmetics registration and filing", "https://english.nmpa.gov.cn/")],
+        "medtech": [("NMPA: medical device registration", "https://english.nmpa.gov.cn/")],
+        "electronics": [("CNCA: China Compulsory Certification (CCC)", "http://english.cnca.cn/")],
+        "vehicles": [("CNCA: China Compulsory Certification (CCC)", "http://english.cnca.cn/")],
+        "machinery": [("CNCA: China Compulsory Certification (CCC)", "http://english.cnca.cn/")],
+        "consumer": [("CNCA: China Compulsory Certification (CCC)", "http://english.cnca.cn/")],
+    },
+}
+
+# When each product-specific trade-defence note was last checked, and where to follow the case.
+TRADE_DEFENCE_META = {
+    "871160": ("2026-11-21", "https://tron.trade.ec.europa.eu/investigations/ongoing"),
+    "870380": ("2026-11-21", "https://tron.trade.ec.europa.eu/investigations/ongoing"),
+    "854143": ("2026-11-21", "https://tron.trade.ec.europa.eu/investigations/ongoing"),
+    "850760": ("2026-11-21", "http://english.mofcom.gov.cn/"),
+    "220830": ("2026-11-21", "http://english.mofcom.gov.cn/"),
+    "220421": ("2026-11-21", "http://english.mofcom.gov.cn/"),
+}
+
+
+def kb_status(today=None, as_of: str = KB_AS_OF) -> dict:
+    """Age of the curated notes and whether they are due for review."""
+    from datetime import date as _date
+    today = today or _date.today()
+    age = (today - _date.fromisoformat(as_of)).days
+    return {"as_of": as_of, "age_days": age, "stale": age > KB_MAX_AGE_DAYS}
+
+
+# Standard VAT / import VAT rates (%), used by the landed-cost calculator.
+VAT_RATES = {
+    "AT": 20, "BE": 21, "BG": 20, "CY": 19, "CZ": 21, "DE": 19, "DK": 25, "EE": 24, "ES": 21, "FI": 25.5,
+    "FR": 20, "GR": 24, "HR": 25, "HU": 27, "IE": 23, "IT": 22, "LT": 21, "LU": 17, "LV": 21, "MT": 18,
+    "NL": 21, "PL": 23, "PT": 23, "RO": 21, "SE": 25, "SI": 22, "SK": 23, "CN": 13,
+}
+# Preferential tariff note: under an FTA most originating industrial goods enter duty-free.
+FTA_DEFAULT_PREF_RATE = 0.0
 
 VERIFY_SOURCES = {
     "EU": [

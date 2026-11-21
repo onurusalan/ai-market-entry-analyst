@@ -37,17 +37,102 @@ def cagr(first: float, last: float, years: int) -> float | None:
     return round(((last / first) ** (1 / years) - 1) * 100, 2)
 
 
-def _supplier_table(df: pd.DataFrame, value_col: str, total: float, top_n: int) -> list[dict]:
+SMALL_MARKET = 50e6        # below this (EUR/USD) growth rates are noisy
+SERIES_BREAK_RATIO = 0.05  # a year below 5% of the peak points to a classification change or gap
+
+
+def trend_growth(series: dict[int, float]) -> float | None:
+    """
+    Average annual growth from a log-linear least-squares fit over all years.
+    Less sensitive to an unusual first or last year than the end-point CAGR.
+    """
+    pts = [(int(y), math.log(v)) for y, v in series.items() if v and v > 0]
+    if len(pts) < 3:
+        return None
+    n = len(pts)
+    mx = sum(x for x, _ in pts) / n
+    my = sum(y for _, y in pts) / n
+    den = sum((x - mx) ** 2 for x, _ in pts)
+    if not den:
+        return None
+    slope = sum((x - mx) * (y - my) for x, y in pts) / den
+    return round((math.exp(slope) - 1) * 100, 2)
+
+
+def data_quality(series: dict[int, float], latest_size: float, hs_code: str = "") -> dict:
+    """
+    Flags that tell the reader how far to trust the growth figures:
+    small markets, series breaks (e.g. a new HS code in HS2022) and volatile base years.
+    Returns the usable series window and a High / Medium / Low confidence label.
+    """
+    from . import knowledge as kb
+
+    flags: list[str] = []
+    years = sorted(series)
+    peak = max(series.values()) if series else 0
+    usable = [y for y in years if series[y] and series[y] >= SERIES_BREAK_RATIO * peak]
+    first_usable = usable[0] if usable else (years[0] if years else None)
+    if usable and first_usable != years[0]:
+        flags.append(f"Series break: values before {first_usable} are near zero, likely a classification change "
+                     f"or reporting gap, so growth is measured from {first_usable}.")
+    if hs_code in kb.HS2022_NEW_CODES:
+        flags.append(f"HS {hs_code} was created in HS2022 (previously part of HS {kb.HS2022_NEW_CODES[hs_code]}); "
+                     "data before 2022 may be incomplete.")
+    if latest_size and latest_size < SMALL_MARKET:
+        flags.append("Small market (below 50 million): a few shipments can swing growth rates strongly.")
+    window = {y: series[y] for y in years if first_usable is not None and y >= first_usable}
+    if len(window) >= 3:
+        vals = list(window.values())
+        med = sorted(vals)[len(vals) // 2]
+        if vals[0] < 0.5 * med:
+            flags.append("Low base year: the first year is less than half the median, which inflates the end-point CAGR.")
+    confidence = "High" if not flags else ("Medium" if len(flags) == 1 and "Small market" not in flags[0] else "Low")
+    return {"confidence": confidence, "flags": flags, "growth_window": [first_usable, years[-1] if years else None]}
+
+
+def _growth_block(series: dict[int, float], latest_size: float, hs_code: str) -> dict:
+    dq = data_quality(series, latest_size, hs_code)
+    lo, hi = dq["growth_window"]
+    window = {y: v for y, v in series.items() if lo is not None and y >= lo}
+    endpoint = cagr(window.get(lo), window.get(hi), (hi - lo) if lo is not None and hi is not None else 0)
+    return {"cagr_pct": endpoint, "growth_trend_pct": trend_growth(window), "data_quality": dq}
+
+
+def _unit_value(value: float, weight_kg: float | None) -> float | None:
+    if not weight_kg or weight_kg <= 0 or not value:
+        return None
+    return round(value / weight_kg, 2)
+
+
+def _supplier_table(df: pd.DataFrame, value_col: str, total: float, top_n: int | None) -> list[dict]:
     df = df.sort_values(value_col, ascending=False)
     rows = []
-    for _, r in df.head(top_n).iterrows():
+    for _, r in (df if top_n is None else df.head(top_n)).iterrows():
+        w = r.get("weight_kg")
+        w = float(w) if w is not None and not pd.isna(w) else None
         rows.append({
             "partner": r["partner"],
             "partner_name": str(r["partner_name"]).split(" (")[0],
             "value": round(float(r[value_col]), 0),
             "share_pct": round(float(r[value_col]) / total * 100, 2) if total else None,
+            "unit_value_per_kg": _unit_value(float(r[value_col]), w),
         })
     return rows
+
+
+def _positions(df: pd.DataFrame, value_col: str, totals: pd.Series, latest: int) -> dict:
+    """Every supplier's rank and share in the latest year plus its share trend (for 'your position')."""
+    out = {}
+    last = df[df["year"] == latest].sort_values(value_col, ascending=False)
+    for rank, (_, r) in enumerate(last.iterrows(), 1):
+        code = r["partner"]
+        hist = df[df["partner"] == code].set_index("year")[value_col]
+        out[code] = {
+            "rank": rank, "suppliers": len(last),
+            "share_by_year": {int(y): round(float(hist.get(y, 0)) / float(totals.loc[y]) * 100, 2)
+                              for y in totals.index if totals.loc[y]},
+        }
+    return out
 
 
 # --------------------------------------------------------------------------- #
@@ -72,6 +157,9 @@ def analyze_eu_market(
     suppliers = _supplier_table(latest, "value_eur", total_last, top_n)
     all_shares = (latest["value_eur"] / total_last * 100).tolist()
     concentration = hhi(all_shares)
+    w_last = latest["weight_kg"].sum(min_count=1) if "weight_kg" in latest else None
+    w_last = float(w_last) if w_last is not None and not pd.isna(w_last) else None
+    sizes = {int(k): round(float(v), 0) for k, v in totals.items()}
 
     china_by_year = countries[countries["partner"] == "CN"].set_index("year")["value_eur"]
     china_share_trend = {
@@ -88,11 +176,13 @@ def analyze_eu_market(
         "currency": "EUR",
         "source": "Eurostat Comext DS-045409 (extra-EU imports)",
         "years": [first_year, last_year],
-        "import_market_size_by_year": {int(k): round(float(v), 0) for k, v in totals.items()},
+        "import_market_size_by_year": sizes,
         "latest_year": last_year,
         "latest_market_size": round(total_last, 0),
-        "cagr_pct": cagr(float(totals.loc[first_year]), total_last, last_year - first_year),
+        **_growth_block(sizes, total_last, hs_code),
         "top_suppliers_latest_year": suppliers,
+        "unit_value_per_kg": _unit_value(float(latest["value_eur"].sum()), w_last),
+        "supplier_positions": _positions(countries, "value_eur", totals, last_year),
         "hhi": concentration,
         "hhi_label": hhi_label(concentration),
         "china_share_pct_by_year": china_share_trend,
@@ -142,6 +232,9 @@ def analyze_china_market(
     latest = countries[countries["year"] == last_year]
     suppliers = _supplier_table(latest, "value_usd", total_last, top_n)
     concentration = hhi((latest["value_usd"] / total_last * 100).tolist())
+    sizes = {int(k): round(float(v), 0) for k, v in world.items()}
+    w_last = latest["weight_kg"].sum(min_count=1) if "weight_kg" in latest else None
+    w_last = float(w_last) if w_last is not None and not pd.isna(w_last) else None
 
     eu_by_year = countries[countries["is_eu_member"]].groupby("year")["value_usd"].sum()
     eu_share_trend = {
@@ -155,11 +248,13 @@ def analyze_china_market(
         "currency": "USD",
         "source": "UN Comtrade (China-reported imports, excluding re-imports of Chinese goods)",
         "years": [first_year, last_year],
-        "import_market_size_by_year": {int(k): round(float(v), 0) for k, v in world.items()},
+        "import_market_size_by_year": sizes,
         "latest_year": last_year,
         "latest_market_size": round(total_last, 0),
-        "cagr_pct": cagr(float(world.loc[first_year]), total_last, last_year - first_year),
+        **_growth_block(sizes, total_last, hs_code),
         "top_suppliers_latest_year": suppliers,
+        "unit_value_per_kg": _unit_value(float(latest["value_usd"].sum()), w_last),
+        "supplier_positions": _positions(countries, "value_usd", world, last_year),
         "hhi": concentration,
         "hhi_label": hhi_label(concentration),
         "eu27_share_pct_by_year": eu_share_trend,
@@ -189,8 +284,13 @@ def attractiveness_score(market: dict, profile: dict | None = None) -> dict:
     size = market.get("latest_market_size") or 0
     # log scale: ~10M -> 2, ~100M -> 4, ~1B -> 6, ~10B -> 8, ~100B -> 10
     size_score = _clip((math.log10(size) - 6) * 2) if size > 0 else 0
-    g = market.get("cagr_pct")
-    growth_score = _clip(5 + (g or 0) / 3) if g is not None else 5
+    g = market.get("growth_trend_pct")
+    if g is None:
+        g = market.get("cagr_pct")
+    growth_score = _clip(5 + g / 3) if g is not None else 5
+    # Shrink the growth signal towards neutral when the data are less reliable.
+    confidence = (market.get("data_quality") or {}).get("confidence", "High")
+    growth_score = 5 + (growth_score - 5) * {"High": 1.0, "Medium": 0.75, "Low": 0.5}.get(confidence, 1.0)
     openness_score = _clip(10 - (market.get("hhi") or 10000) / 1000)
 
     inst_score, log_score = 5.0, 5.0
@@ -213,7 +313,41 @@ def attractiveness_score(market: dict, profile: dict | None = None) -> dict:
         "logistics": round(log_score, 1),
     }
     total = round(sum(subs[k] * w for k, w in weights.items()), 1)
-    return {"score_0_10": total, "sub_scores": subs, "weights": weights}
+    return {"score_0_10": total, "sub_scores": subs, "weights": weights,
+            "growth_input_pct": g, "growth_confidence": confidence}
+
+
+WEIGHT_SCENARIOS = {
+    "Base case": {"market_size": 0.25, "growth": 0.25, "competitive_openness": 0.20,
+                  "institutional_quality": 0.15, "logistics": 0.15},
+    "Equal weights": {k: 0.20 for k in ("market_size", "growth", "competitive_openness",
+                                        "institutional_quality", "logistics")},
+    "Size-led (large incumbents)": {"market_size": 0.40, "growth": 0.20, "competitive_openness": 0.15,
+                                    "institutional_quality": 0.15, "logistics": 0.10},
+    "Growth-led (start-ups)": {"market_size": 0.15, "growth": 0.40, "competitive_openness": 0.20,
+                               "institutional_quality": 0.15, "logistics": 0.10},
+    "Risk-averse (institutions first)": {"market_size": 0.20, "growth": 0.15, "competitive_openness": 0.20,
+                                         "institutional_quality": 0.30, "logistics": 0.15},
+    "Niche entrant (openness first)": {"market_size": 0.15, "growth": 0.20, "competitive_openness": 0.40,
+                                       "institutional_quality": 0.15, "logistics": 0.10},
+}
+
+
+def score_sensitivity(score: dict) -> dict:
+    """
+    Re-weight the same sub-scores under alternative, defensible weighting schemes.
+    Shows whether the verdict depends on the (subjective) weights or holds across them.
+    """
+    subs = score["sub_scores"]
+    rows = [{"scenario": name, "weights": w, "score": round(sum(subs[k] * v for k, v in w.items()), 1)}
+            for name, w in WEIGHT_SCENARIOS.items()]
+    vals = [r["score"] for r in rows]
+
+    def band(x):
+        return "ENTER" if x >= 6.5 else ("ENTER WITH CAUTION" if x >= 5 else "DO NOT ENTER NOW")
+    bands = {band(v) for v in vals}
+    return {"scenarios": rows, "min": min(vals), "max": max(vals),
+            "robust": len(bands) == 1, "bands": sorted(bands)}
 
 
 # --------------------------------------------------------------------------- #
@@ -275,3 +409,52 @@ def rank_eu_members(hs_code: str, start_year: int, end_year: int) -> list[dict]:
     for i, row in enumerate(rows, 1):
         row["rank"] = i
     return rows
+
+
+# --------------------------------------------------------------------------- #
+# Validation: does the EU-27 ranking predict where demand actually grew?
+# --------------------------------------------------------------------------- #
+def backtest_eu_ranking(hs_code: str, end_year: int, horizon: int = 4, lookback: int = 5) -> dict | None:
+    """
+    Out-of-sample check of the member-state ranking.
+
+    Rank the 27 members using only data up to t0 = end_year - horizon, then compare
+    that ranking with what happened next (t0 -> end_year): the absolute increase in
+    imports (where new demand appeared) and the growth rate. Reports Spearman rank
+    correlations and how many of the predicted top-5 were among the actual top-5.
+    Caveat: country fundamentals are today's values (small look-ahead bias).
+    """
+    t0 = end_year - horizon
+    past = rank_eu_members(hs_code, t0 - lookback, t0)
+    if not past:
+        return None
+    df = ds.eu_members_total_imports(hs_code, [t0, end_year])
+    if df.empty:
+        return None
+    wide = df.pivot(index="reporter", columns="year", values="value_eur").fillna(0)
+    if t0 not in wide or end_year not in wide:
+        return None
+    pred = pd.Series({r["member"]: r["score_0_10"] for r in past})
+    gain = (wide[end_year] - wide[t0]).reindex(pred.index)
+    growth = pd.Series({m: cagr(wide.at[m, t0], wide.at[m, end_year], horizon) for m in pred.index}, dtype=float)
+    top_pred = set(pred.sort_values(ascending=False).index[:5])
+    top_gain = set(gain.sort_values(ascending=False).index[:5])
+
+    def spearman(a: pd.Series, b: pd.Series) -> float | None:
+        both = pd.concat([a, b], axis=1).dropna()
+        if len(both) < 5:
+            return None
+        return round(float(both.iloc[:, 0].rank().corr(both.iloc[:, 1].rank())), 2)
+    return {
+        "hs_code": hs_code, "ranked_with": [t0 - lookback, t0], "evaluated": [t0, end_year],
+        "spearman_vs_gain": spearman(pred, gain), "spearman_vs_growth": spearman(pred, growth),
+        "top5_hits": len(top_pred & top_gain), "predicted_top5": sorted(top_pred), "actual_top5": sorted(top_gain),
+    }
+
+
+def tariff_for(target: str, hs_code: str, latest_year: int) -> dict | None:
+    """MFN tariff applied by the target market (thin wrapper so callers can cache or mock it)."""
+    try:
+        return ds.mfn_tariff(target, hs_code, latest_year)
+    except Exception:  # tariff data is a nice-to-have; never break a report over it
+        return None

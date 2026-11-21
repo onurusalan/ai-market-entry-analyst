@@ -24,7 +24,7 @@ from plotly.offline import get_plotlyjs_version
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from src import analysis  # noqa: E402
+from src import analysis, catalog  # noqa: E402
 from src import knowledge as kb  # noqa: E402
 from src.report_engine import COMPANY_SIZES, generate_report  # noqa: E402
 
@@ -37,45 +37,11 @@ REPO_URL = "https://github.com/onurusalan/ai-market-entry-analyst"
 END = date.today().year - 2
 START = END - 5
 
-PRODUCTS = [
-    # hs, label, icon
-    ("871160", "E-bikes", "🚲"),
-    ("870380", "Battery-electric cars", "🚗"),
-    ("850760", "Lithium-ion batteries", "🔋"),
-    ("854143", "Solar PV modules", "☀️"),
-    ("841861", "Heat pumps", "🌡️"),
-    ("300490", "Medicaments", "💊"),
-    ("330499", "Skincare & cosmetics", "🧴"),
-    ("220421", "Bottled wine", "🍷"),
-    ("940360", "Wooden furniture", "🪑"),
-    ("610910", "Cotton T-shirts", "👕"),
-]
-
-TARGETS = {
-    "EU": {"label": "EU-27", "homes": ["CN", "US", "JP", "KR", "TW", "VN", "IN", "GB"]},
-    "CN": {"label": "China", "homes": ["DE", "FR", "IT", "ES", "NL", "US", "JP", "KR"]},
-}
-
-# Featured case studies (all of them are also reachable through the analyzer).
-CASES = [
-    # hs, target, home, size, company, headline
-    ("870380", "EU", "CN", "large", "Chinese EV maker", "Can a Chinese EV maker scale in Europe despite countervailing duties?"),
-    ("871160", "EU", "TW", "medium", "Taiwanese e-bike manufacturer", "A diversification opening in a China-dominated supply base."),
-    ("330499", "CN", "FR", "small", "French premium skincare brand", "Cross-border e-commerce as a low-risk door into China."),
-    ("300490", "CN", "DE", "large", "German pharmaceutical company", "Regulated market: why a partner beats going alone."),
-    ("850760", "EU", "KR", "large", "Korean battery-cell producer", "Riding Europe's battery boom against Chinese incumbents."),
-    ("841861", "EU", "JP", "large", "Japanese HVAC manufacturer", "Heat pumps and the EU's decarbonisation push."),
-    ("220421", "CN", "IT", "medium", "Italian wine cooperative", "Competing with Australia's comeback in Chinese wine."),
-    ("940360", "EU", "VN", "small", "Vietnamese furniture exporter", "Low-cost entry for a small exporter."),
-]
+PRODUCTS = catalog.PRODUCTS
+TARGETS = catalog.TARGET_HOMES
+CASES = catalog.CASES
 CASE_COMPANY = {(c[0], c[1], c[2], c[3]): c[4] for c in CASES}
-
-EU_ISO3 = {
-    "AT": "AUT", "BE": "BEL", "BG": "BGR", "CY": "CYP", "CZ": "CZE", "DE": "DEU", "DK": "DNK",
-    "EE": "EST", "ES": "ESP", "FI": "FIN", "FR": "FRA", "GR": "GRC", "HR": "HRV", "HU": "HUN",
-    "IE": "IRL", "IT": "ITA", "LT": "LTU", "LU": "LUX", "LV": "LVA", "MT": "MLT", "NL": "NLD",
-    "PL": "POL", "PT": "PRT", "RO": "ROU", "SE": "SWE", "SI": "SVN", "SK": "SVK",
-}
+EU_ISO3 = catalog.EU_ISO3
 
 # Old static report URLs (kept working as redirects).
 LEGACY = {
@@ -102,7 +68,7 @@ def memoize(fn):
     return wrapper
 
 
-for _fn in ("analyze_eu_market", "analyze_china_market", "profile_for", "rank_eu_members"):
+for _fn in ("analyze_eu_market", "analyze_china_market", "profile_for", "rank_eu_members", "tariff_for"):
     setattr(analysis, _fn, memoize(getattr(analysis, _fn)))
 
 
@@ -124,12 +90,13 @@ def market_payload(hs: str, target: str, data: dict) -> dict:
         "years": [int(y) for y in m["import_market_size_by_year"]],
         "sizes": list(m["import_market_size_by_year"].values()),
         "latest_year": m["latest_year"], "latest_size": m["latest_market_size"], "cagr": m["cagr_pct"],
-        "hhi": m["hhi"], "hhi_label": m["hhi_label"],
-        "suppliers": [{"name": s["partner_name"], "code": s["partner"], "value": s["value"], "share": s["share_pct"]}
-                      for s in m["top_suppliers_latest_year"]],
+        "growth": data["growth_pct"], "quality": data["data_quality"],
+        "hhi": m["hhi"], "hhi_label": m["hhi_label"], "unit_value": m.get("unit_value_per_kg"),
+        "suppliers": [{"name": s["partner_name"], "code": s["partner"], "value": s["value"], "share": s["share_pct"],
+                       "uv": s.get("unit_value_per_kg")} for s in m["top_suppliers_latest_year"]],
         "share_label": "China's share of extra-EU imports" if target != "CN" else "EU-27 share of China's imports",
         "share": {str(k): v for k, v in (m.get(share_key) or {}).items()},
-        "score": data["score"],
+        "score": data["score"], "sensitivity": data["sensitivity"],
         "ranking": [{"rank": r["rank"], "code": r["member"], "name": name(r["member"]), "iso3": EU_ISO3[r["member"]],
                      "score": r["score_0_10"], "imports": r["imports_eur"], "share": r["share_of_eu_pct"],
                      "cagr": r["cagr_pct"]} for r in data["ranking"]],
@@ -145,13 +112,41 @@ def report_payload(rep, home: str, size: str) -> dict:
         "cage": d["cage"]["overall_label"], "cage_dims": d["cage_dimensions"],
         "distance_km": round(d["cage"].get("distance_km") or 0),
         "risks": [{"risk": r["risk"], "likelihood": r["likelihood"], "impact": r["impact"]} for r in d["risks"]],
+        "tariff": {"mfn": (d["tariff"].get("mfn") or {}).get("rate_pct"), "mfn_year": (d["tariff"].get("mfn") or {}).get("year"),
+                   "applicable": d["tariff"]["applicable_pct"], "basis": d["tariff"]["basis"], "fta": d["tariff"].get("fta"),
+                   "trade_defence": bool(d["tariff"].get("trade_defence"))},
+        "cost": d["landed_cost"]["assumptions"] | {"vat_country": name(d["vat_country"])},
+        "position": d["position"],
         "html": md.markdown(body, extensions=["tables"]),
     }
 
 
-def build_data() -> dict:
-    available, featured = [], []
+def insights_payload(markets: dict[str, dict]) -> dict:
+    """Cross-product view: how dependent is the EU on China, and how present is the EU in China?"""
+    eu, cn = [], []
     for hs, label, icon in PRODUCTS:
+        m = markets.get(f"{hs}-EU")
+        if m and m["share"]:
+            years = sorted(m["share"])
+            eu.append({"hs": hs, "label": label, "icon": icon, "market": m["latest_size"], "hhi": m["hhi"],
+                       "china_share": m["share"][years[-1]], "china_share_first": m["share"][years[0]],
+                       "first_year": int(years[0]), "growth": m["growth"], "confidence": m["quality"]["confidence"]})
+        c = markets.get(f"{hs}-CN")
+        if c and c["share"]:
+            years = sorted(c["share"])
+            top = c["suppliers"][0] if c["suppliers"] else {}
+            cn.append({"hs": hs, "label": label, "icon": icon, "market": c["latest_size"], "eu_share": c["share"][years[-1]],
+                       "eu_share_first": c["share"][years[0]], "first_year": int(years[0]), "top_supplier": top.get("name"),
+                       "top_share": top.get("share"), "growth": c["growth"], "confidence": c["quality"]["confidence"]})
+    eu.sort(key=lambda r: r["china_share"], reverse=True)
+    cn.sort(key=lambda r: r["eu_share"], reverse=True)
+    return {"eu_dependency": eu, "eu_in_china": cn}
+
+
+
+def build_data() -> dict:
+    available, featured, markets = [], [], {}
+    for hs, label, _icon in PRODUCTS:
         for target, tinfo in TARGETS.items():
             print(f"→ {hs} {label} → {tinfo['label']}")
             ok = False
@@ -164,7 +159,8 @@ def build_data() -> dict:
                         print(f"   skipped: {exc}")
                         break
                     if not ok:
-                        write_json(DATA / "m" / f"{hs}-{target}.json", market_payload(hs, target, rep.data))
+                        markets[f"{hs}-{target}"] = market_payload(hs, target, rep.data)
+                        write_json(DATA / "m" / f"{hs}-{target}.json", markets[f"{hs}-{target}"])
                         ok = True
                     write_json(DATA / "r" / f"{hs}-{target}-{home}-{size}.json", report_payload(rep, home, size))
                 if not ok:
@@ -183,10 +179,23 @@ def build_data() -> dict:
                          "company": company, "headline": headline, "home_name": name(home),
                          "target_name": TARGETS[target]["label"], "verdict": r["verdict"], "score": r["score"],
                          "mode": r["mode"], "market": m["latest_size"], "currency": m["currency"],
-                         "year": m["latest_year"], "cagr": m["cagr"]})
+                         "year": m["latest_year"], "cagr": m["growth"]})
+
+    write_json(DATA / "insights.json", insights_payload(markets))
+    backtest = []
+    for hs, label, icon in PRODUCTS:
+        try:
+            bt = analysis.backtest_eu_ranking(hs, END)
+        except Exception as exc:  # validation is optional; never block the build
+            print(f"   backtest skipped for {hs}: {exc}")
+            bt = None
+        if bt:
+            backtest.append({**bt, "label": label, "icon": icon})
+    write_json(DATA / "backtest.json", backtest)
 
     catalog = {
         "updated": date.today().isoformat(), "years": [START, END], "repo": REPO_URL,
+        "kb": kb.kb_status(),
         "plotly": get_plotlyjs_version(),
         "products": [{"hs": hs, "label": label, "icon": icon} for hs, label, icon in PRODUCTS],
         "targets": {t: {"label": v["label"], "homes": [{"code": h, "name": name(h)} for h in v["homes"]]}
@@ -200,7 +209,7 @@ def build_data() -> dict:
 
 def copy_front_end(plotly_version: str) -> None:
     for src in SITE.rglob("*"):
-        if src.is_dir():
+        if src.is_dir() or src.name == "og.html":  # og.html is only the template for the share image
             continue
         dst = DOCS / src.relative_to(SITE)
         dst.parent.mkdir(parents=True, exist_ok=True)

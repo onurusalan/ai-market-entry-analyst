@@ -7,17 +7,21 @@
 <meta name="description" content="Data-driven market entry analysis for the EU and Chinese markets, built on Eurostat, UN Comtrade and World Bank data.">
 <meta property="og:title" content="Market Entry Analyst: EU ⇄ China">
 <meta property="og:description" content="Consulting-style market entry reports generated from official trade data.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="https://onurusalan.github.io/ai-market-entry-analyst/img/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%232457f5'/%3E%3Cpath d='M9 20l5-5 4 3 6-7' stroke='white' stroke-width='2.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
+<a class="skip" href="#analyzer">Skip to analyzer</a>
 <header class="top"><div class="wrap">
   <a class="brand" href="index.html"><span class="logo"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M4 16l5-5 4 3 7-8"/><path d="M15 6h5v5"/></svg></span>
     <span>Market Entry Analyst<small>EU ⇄ China trade intelligence</small></span></a>
   <nav class="nav">
-    <a href="#analyzer" class="hide-sm">Analyzer</a><a href="#cases">Case studies</a><a href="#method" class="hide-sm">Methodology</a>
+    <a href="#analyzer" class="hide-sm">Analyzer</a><a href="#cases">Case studies</a><a href="insights.html" class="hide-sm">Insights</a><a href="#method" class="hide-sm">Methodology</a>
     <a href="https://github.com/onurusalan/ai-market-entry-analyst" class="hide-sm">GitHub</a>
     <button class="icon-btn" id="theme-btn" aria-label="Toggle dark mode"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"/></svg></button>
   </nav>
@@ -93,6 +97,8 @@
       <p class="muted" style="font-size:13.5px;margin:0">Verdict: <b>Enter</b> if the score is ≥ 6.5 with at most one high/high risk, <b>Enter with caution</b> if ≥ 5, otherwise <b>Do not enter now</b>.</p>
     </div>
     <div class="card"><h3>Data &amp; limitations</h3><ul>
+      <li><b>Data quality checks:</b> small markets, HS-code changes and low base years are flagged, and the growth signal is shrunk when data are unreliable.</li>
+      <li><b>Tariffs:</b> MFN applied rates from World Bank WITS (UNCTAD TRAINS); FTA preferences from a curated agreement list.</li>
       <li><b>EU market size:</b> extra-EU imports, Eurostat Comext DS-045409 (EUR).</li>
       <li><b>China market size:</b> China-reported imports, UN Comtrade, excluding re-imports (USD).</li>
       <li><b>Country fundamentals:</b> World Bank GDP, growth, inflation, LPI and governance indicators.</li>
@@ -100,6 +106,26 @@
       <li>Hubs such as the Netherlands and Belgium re-export, which inflates their demand.</li>
       <li>Regulatory notes are curated and must be verified on the official sources linked in each report.</li>
     </ul></div>
+  </div>
+</section>
+
+<section class="block" id="validation">
+  <div class="sec-head"><span class="kicker">Validation</span><h2>Does the EU-27 ranking work out of sample?</h2>
+    <p>Each member state was ranked with data up to <span id="bt-t0">t₀</span> only, then compared with what actually happened over the next four years. A score is only useful if it is tested.</p></div>
+  <div class="card pad"><div class="table-wrap"><table id="bt-table"><thead><tr><th>Product</th><th class="num">Rank correlation with new demand</th><th class="num">Rank correlation with growth rate</th><th class="num">Top-5 hits</th></tr></thead><tbody></tbody></table></div>
+  <p class="muted" style="font-size:14px;margin:0" id="bt-summary"></p></div>
+</section>
+
+<section class="block" id="services">
+  <div class="sec-head"><span class="kicker">Use it</span><h2>From free analysis to a tailored study</h2>
+    <p>The analyzer is free. For a product, country pair or question it does not cover yet, a custom analysis can be requested.</p></div>
+  <div class="grid">
+    <div class="card feat"><div class="fi">◎</div><h3>Free analyzer</h3><p>10 products, EU-27 and China, 16 home countries, three company sizes. Refreshed monthly.</p>
+      <p style="margin-top:12px"><a href="#analyzer">Open the analyzer →</a></p></div>
+    <div class="card feat"><div class="fi">✦</div><h3>Custom market report</h3><p>Any HS6 product and country pair, with tariff scenarios, landed-cost model and a shortlist of priority markets.</p>
+      <p style="margin-top:12px"><a href="https://github.com/onurusalan/ai-market-entry-analyst/issues/new?template=custom-report.yml">Request a report →</a></p></div>
+    <div class="card feat"><div class="fi">⌘</div><h3>Run it yourself</h3><p>Open-source Python code: run the Streamlit app locally for any HS code and custom year ranges.</p>
+      <p style="margin-top:12px"><a href="https://github.com/onurusalan/ai-market-entry-analyst#-quick-start">Quick start →</a></p></div>
   </div>
 </section>
 

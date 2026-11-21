@@ -1,5 +1,5 @@
 """
-AI layer: a Claude agent that researches a market-entry question with real data
+AI layer (experimental, optional): a Claude agent that researches a market-entry question with real data
 and writes a structured International Business report.
 
 The agent decides which tools to call (EU trade data, China trade data,
@@ -10,7 +10,7 @@ then applies IB frameworks (PESTEL, CAGE, Porter, entry modes) to the results.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import anthropic
@@ -150,7 +150,29 @@ def market_attractiveness_score(target_market: str, hs_code: str, start_year: in
         return _to_json({"error": str(exc)})
 
 
+@beta_tool
+def rule_based_entry_report(hs_code: str, target_market: str, home_country: str,
+                            company_size: str = "medium") -> str:
+    """Run the platform's own rule-based entry engine and return its verdict, score, tariff,
+    landed cost, competitive position and entry mode. Use it as the quantitative baseline.
+
+    Args:
+        hs_code: 6-digit HS product code.
+        target_market: "EU" or "CN".
+        home_country: ISO2 code of the company's home country.
+        company_size: "small", "medium" or "large".
+    """
+    from .report_engine import generate_report
+    try:
+        d = generate_report(hs_code, target_market, home_country, company_size=company_size).data
+        return _to_json({k: d[k] for k in ("verdict", "score", "entry_mode", "tariff", "landed_cost",
+                                           "position", "sensitivity", "data_quality", "cage")})
+    except Exception as exc:  # report the error to the model instead of crashing the loop
+        return _to_json({"error": str(exc)})
+
+
 TOOLS = [
+    rule_based_entry_report,
     eu_market_data,
     china_market_data,
     country_profiles,
@@ -159,11 +181,12 @@ TOOLS = [
 ]
 
 TOOL_LABELS = {
-    "eu_market_data": "Eurostat: AB ithalat verisi çekiliyor",
-    "china_market_data": "UN Comtrade: Çin ithalat verisi çekiliyor",
-    "country_profiles": "World Bank: ülke göstergeleri çekiliyor",
-    "market_attractiveness_score": "Pazar çekicilik skoru hesaplanıyor",
-    "web_search": "Web: güncel tarife, regülasyon ve haber taranıyor",
+    "rule_based_entry_report": "Running the rule-based entry engine",
+    "eu_market_data": "Eurostat: pulling EU import data",
+    "china_market_data": "UN Comtrade: pulling China import data",
+    "country_profiles": "World Bank: pulling country indicators",
+    "market_attractiveness_score": "Computing the attractiveness score",
+    "web_search": "Web: checking current tariffs, regulation and news",
 }
 
 
