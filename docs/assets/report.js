@@ -83,7 +83,7 @@
       <div class="card chart-card"><h3>Your starting position: ${esc(r.home_name)}</h3><p class="cap">Share, rank and price level in this market, ${m.latest_year}</p>
         <div class="pos">${positionHtml(r, m)}</div></div>
       ${m.ranking.length ? `<div class="card chart-card wide"><h3>Where to start in the EU</h3><p class="cap">Entry attractiveness by member state (0-10): demand, growth, purchasing power, logistics, institutions</p>
-        <div class="map-split"><div class="plot" id="c-map"></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Country</th><th class="num">Imports</th><th class="num">CAGR</th><th class="num">Score</th></tr></thead>
+        <div class="map-split">${tileMap(m.ranking)}<div class="table-wrap"><table><thead><tr><th>#</th><th>Country</th><th class="num">Imports</th><th class="num">CAGR</th><th class="num">Score</th></tr></thead>
         <tbody>${m.ranking.slice(0, 8).map((x) => `<tr><td>${x.rank}</td><td>${esc(x.name)}</td><td class="num">${money(x.imports, "EUR")}</td><td class="num">${signedPct(x.cagr)}</td><td class="num"><b>${x.score}</b></td></tr>`).join("")}</tbody></table></div></div></div>` : ""}
       <div class="card chart-card wide" id="calc"><h3>Landed-cost calculator</h3>
         <p class="cap">Duty prefilled from WITS: ${r.tariff.mfn != null ? `MFN ${r.tariff.mfn}% (${r.tariff.mfn_year})` : "MFN n/a"} · ${esc(r.tariff.basis)}. Edit any input.</p>
@@ -154,6 +154,22 @@
     const draw = () => drawCharts(m, r);
     if (window.Plotly) draw(); else window.addEventListener("load", draw);
     window.addEventListener("themechange", draw);
+  }
+
+  // EU-27 tile map: one square per member state, shaded by score. Pure HTML/CSS, no map files (works offline).
+  function tileMap(ranking) {
+    if (!ranking.length || !cat.tiles) return "";
+    const scores = ranking.map((x) => x.score), lo = Math.min(...scores), hi = Math.max(...scores);
+    const tiles = ranking.map((x) => {
+      const pos = cat.tiles[x.code];
+      if (!pos) return "";
+      const t = hi > lo ? (x.score - lo) / (hi - lo) : 1, pctMix = Math.round(15 + t * 85);
+      return `<div class="tile${pctMix > 55 ? " dark" : ""}" style="grid-row:${pos[0] + 1};grid-column:${pos[1] + 1};background:color-mix(in srgb, var(--accent) ${pctMix}%, var(--surface-2))"
+        title="${esc(x.name)}: score ${x.score}/10, rank ${x.rank}"><b>${x.code}</b><span>${x.score.toFixed(1)}</span></div>`;
+    }).join("");
+    const top = ranking.slice(0, 3).map((x) => x.name).join(", ");
+    return `<div><div class="tilemap" role="img" aria-label="Tile map of EU member states by entry score; top three: ${esc(top)}.">${tiles}</div>
+      <div class="tile-legend"><span>${lo.toFixed(1)}</span><i></i><span>${hi.toFixed(1)}</span><small>entry score (0–10), darker = more attractive</small></div></div>`;
   }
 
   function compareUrl() { // this case vs the same product in the other market (same home if offered there)
@@ -306,18 +322,8 @@
       "c-season": m.seasonality ? `Monthly seasonality; peaks in ${m.seasonality.peak_months.join(", ")}, ship in ${m.seasonality.ship_window.join(" and ")}.` : "",
       "c-untap": r.untapped && r.untapped.markets.length ? `Untapped potential by member state; largest: ${r.untapped.markets.slice(0, 3).map((x) => x.name).join(", ")}.` : "",
       "c-sens": `Scores under six weighting schemes range from ${m.sensitivity.min} to ${m.sensitivity.max}.`,
-      "c-map": m.ranking.length ? `Map of EU member states by entry score; top three: ${m.ranking.slice(0, 3).map((x) => x.name).join(", ")}.` : "",
     };
     Object.entries(alt).forEach(([id, label]) => { const el = document.getElementById(id); if (el && label) { el.setAttribute("role", "img"); el.setAttribute("aria-label", label); } });
 
-    if (m.ranking.length) {
-      Plotly.react("c-map", [{
-        type: "choropleth", locations: m.ranking.map((x) => x.iso3), z: m.ranking.map((x) => x.score), text: m.ranking.map((x) => x.name),
-        colorscale: [[0, C.faint], [1, C.accent]], marker: { line: { color: v("--surface"), width: 0.6 } },
-        colorbar: { thickness: 10, len: 0.7, outlinewidth: 0, tickfont: { color: C.text } },
-        hovertemplate: "%{text}<br>Score %{z:.1f}/10<extra></extra>",
-      }], L({ margin: { t: 0, r: 0, b: 0, l: 0 }, dragmode: false,
-        geo: { scope: "europe", fitbounds: "locations", visible: false, showcountries: false, bgcolor: "rgba(0,0,0,0)", projection: { type: "mercator" } } }), cfg);
-    }
   }
 })();

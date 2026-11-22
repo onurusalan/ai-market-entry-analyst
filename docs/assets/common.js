@@ -44,10 +44,35 @@ const verdictClass = (v) => ({ "ENTER": "ok", "ENTER WITH CAUTION": "warn" }[v] 
 const verdictText = (v) => ({ "ENTER": "Enter", "ENTER WITH CAUTION": "Enter with caution", "DO NOT ENTER NOW": "Do not enter now" }[v] || v);
 const reportUrl = (s) => `report.html?p=${s.p}&t=${s.t}&h=${s.h}&s=${s.s}`;
 
+let bundlePromise = null;
+function loadBundle() { // offline: data/bundle.js holds every JSON file (used when the page is opened from disk)
+  if (!bundlePromise) {
+    bundlePromise = new Promise((resolve, reject) => {
+      const s = document.createElement("script");
+      s.src = "data/bundle.js";
+      s.onload = () => resolve(window.__MEA_DATA || {});
+      s.onerror = () => reject(new Error("data/bundle.js missing"));
+      document.head.appendChild(s);
+    });
+  }
+  return bundlePromise;
+}
+
 async function getJSON(url) {
-  const r = await fetch(url, { cache: "no-cache" });
-  if (!r.ok) throw new Error(`${r.status} ${url}`);
-  return r.json();
+  if (location.protocol === "file:") {
+    const data = await loadBundle();
+    if (!(url in data)) throw new Error(`404 ${url}`);
+    return JSON.parse(JSON.stringify(data[url]));
+  }
+  try {
+    const r = await fetch(url, { cache: "no-cache" });
+    if (!r.ok) throw new Error(`${r.status} ${url}`);
+    return await r.json();
+  } catch (e) { // fetch blocked or failed: try the bundled copy before giving up
+    const data = await loadBundle().catch(() => ({}));
+    if (url in data) return JSON.parse(JSON.stringify(data[url]));
+    throw e;
+  }
 }
 
 function toast(msg) {

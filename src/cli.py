@@ -49,6 +49,7 @@ def _target(value: str) -> str:
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="market-entry", description="EU ⇄ China market entry analysis from official trade data.")
     p.add_argument("-v", "--verbose", action="store_true", help="log data requests")
+    p.add_argument("--offline", action="store_true", help="use cached data only, never the network (same as MEA_OFFLINE=1)")
     sub = p.add_subparsers(dest="command", required=True)
 
     r = sub.add_parser("report", help="full market entry report")
@@ -68,6 +69,10 @@ def build_parser() -> argparse.ArgumentParser:
     k.add_argument("--start", type=int)
     k.add_argument("--end", type=int, default=DEFAULT_END)
     k.add_argument("--top", type=int, default=10)
+
+    s = sub.add_parser("serve", help="open the web app on this computer (works without internet)")
+    s.add_argument("--port", type=int, default=8765)
+    s.add_argument("--no-browser", action="store_true")
 
     t = sub.add_parser("tariff", help="import duty for a product and country pair")
     t.add_argument("--hs", type=_hs, required=True)
@@ -120,11 +125,38 @@ def cmd_tariff(a: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(a: argparse.Namespace) -> int:
+    import functools
+    import http.server
+    import webbrowser
+
+    docs = Path(__file__).resolve().parent.parent / "docs"
+    if not (docs / "index.html").exists():
+        print("docs/ not built yet: run python scripts/build_site.py once (with internet).", file=sys.stderr)
+        return 1
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=str(docs))
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", a.port), handler)
+    url = f"http://localhost:{a.port}/index.html"
+    print(f"Serving the web app offline at {url} (Ctrl+C to stop)")
+    if not a.no_browser:
+        webbrowser.open(url)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    if args.offline:
+        import os
+        os.environ["MEA_OFFLINE"] = "1"
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING,
                         format="%(levelname)s %(name)s: %(message)s")
-    handlers = {"report": cmd_report, "rank": cmd_rank, "tariff": cmd_tariff}
+    handlers = {"report": cmd_report, "rank": cmd_rank, "tariff": cmd_tariff, "serve": cmd_serve}
     try:
         return handlers[args.command](args)
     except ValueError as exc:  # e.g. no data for this product

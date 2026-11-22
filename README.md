@@ -105,6 +105,18 @@ Reading: the ranking is a good guide to **where demand volume will appear**, but
         both use src/catalog.py (one product and country catalogue)
 ```
 
+## 📴 Offline use (no internet needed)
+
+Everything needed to present the project without a connection is in the repository:
+
+| How | What to do |
+|---|---|
+| **Web app, easiest** | Open `docs/index.html` in Chrome, Edge, Safari or Firefox (double-click). Data come from `docs/data/bundle.js`, charts from the bundled Plotly copy. |
+| **Web app via a local server** | Double-click `Start Offline.command` (macOS) or `start-offline.bat` (Windows), or run `market-entry serve`. |
+| **Streamlit app / CLI** | `MEA_OFFLINE=1 streamlit run app.py` or `market-entry --offline report ...`: uses the cached API answers in `data/cache` whatever their age, never the network. |
+
+Notes: no CDN scripts or web fonts are used (system fonts, local Plotly), and EU maps are tile maps that need no map files. The Python side needs `data/cache`, which is filled by any run with internet (e.g. `python scripts/build_site.py`); without `MEA_OFFLINE`, a failed request also falls back to an expired cached answer. Only the optional Claude AI narrative needs internet.
+
 ## 🚀 Quick start
 
 ```bash

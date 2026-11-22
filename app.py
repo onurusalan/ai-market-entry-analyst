@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 from src import analysis, catalog
 from src import knowledge as kb
 from src.report_engine import COMPANY_SIZES, generate_report, landed_cost
+from src.viz import eu_tile_map
 
 load_dotenv()
 
@@ -32,8 +33,7 @@ px.defaults.color_discrete_sequence = [ACCENT, "#0b2545", "#8a93a3", "#6c9bff", 
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-html, body, [class*="css"], .stMarkdown, .stTextInput, .stSelectbox, button { font-family: 'Inter', sans-serif !important; }
+html, body, [class*="css"], .stMarkdown, .stTextInput, .stSelectbox, button { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Roboto, Arial, sans-serif !important; }
 .block-container { padding-top: 1.6rem; max-width: 1240px; }
 #MainMenu, footer, [data-testid="stDecoration"] { visibility: hidden; }
 .app-hero { background: linear-gradient(135deg, #0b2545 0%, #1a3fb8 100%); color: #fff; border-radius: 16px;
@@ -149,7 +149,7 @@ with st.sidebar:
     st.markdown("**Frameworks**: PESTEL · CAGE · HHI · OLI entry modes")
     st.markdown("[🌐 Live showcase site](https://onurusalan.github.io/ai-market-entry-analyst/)")
     st.divider()
-    with st.expander("Optional: Claude AI narrative (experimental)"):
+    with st.expander("Optional: Claude AI narrative (experimental, needs internet)"):
         st.caption("The platform is fully free. If you have your own Anthropic API key, "
                    "an AI agent can also write a narrative report with live web research.")
         user_key = st.text_input("Anthropic API key", type="password",
@@ -342,13 +342,8 @@ with tab_data:
 
             members = m.get("eu_members_importing_from_china_latest_year")
             if members:
-                mdf = pd.DataFrame(members)
-                mdf["iso3"] = mdf["member"].map(EU_ISO3)
-                fig = px.choropleth(mdf, locations="iso3", color="value_eur", color_continuous_scale="Reds",
-                                    title=f"Imports from China by EU member state ({m['latest_year']}, EUR)",
-                                    labels={"value_eur": "EUR"})
-                fig.update_geos(fitbounds="locations", visible=False, showcountries=True, bgcolor="rgba(0,0,0,0)")
-                fig.update_layout(height=520, margin=dict(t=50, b=0), paper_bgcolor="rgba(0,0,0,0)")
+                fig = eu_tile_map({r["member"]: r["value_eur"] / 1e6 for r in members},
+                                  f"Imports from China by EU member state ({m['latest_year']}, EUR m)", " m", "Reds")
                 st.plotly_chart(fig, width="stretch")
 
             with st.expander("Raw data (JSON)"):
@@ -375,12 +370,8 @@ with tab_rank:
         if ranking:
             rdf = pd.DataFrame(ranking)
             rdf["country"] = rdf["member"].map(name)
-            rdf["iso3"] = rdf["member"].map(EU_ISO3)
-            fig = px.choropleth(rdf, locations="iso3", color="score_0_10", hover_name="country",
-                                color_continuous_scale="Blues", title="Entry attractiveness by member state (0-10)",
-                                labels={"score_0_10": "Score"})
-            fig.update_geos(fitbounds="locations", visible=False, showcountries=True, bgcolor="rgba(0,0,0,0)")
-            fig.update_layout(height=520, margin=dict(t=50, b=0), paper_bgcolor="rgba(0,0,0,0)")
+            fig = eu_tile_map(dict(zip(rdf["member"], rdf["score_0_10"], strict=True)),
+                              "Entry attractiveness by member state (0-10)", "", "Blues")
             st.plotly_chart(fig, width="stretch")
             show = rdf[["rank", "country", "imports_eur", "share_of_eu_pct", "cagr_pct", "gdp_per_capita_usd",
                         "lpi", "score_0_10"]].rename(columns={

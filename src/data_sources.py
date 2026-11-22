@@ -87,19 +87,35 @@ def _http() -> requests.Session:
     return _session
 
 
+def offline() -> bool:
+    """True when MEA_OFFLINE is set: work from the local cache only (e.g. a presentation without internet)."""
+    return os.getenv("MEA_OFFLINE", "").strip().lower() in ("1", "true", "yes")
+
+
 class NotFound(RuntimeError):
     """The source answered but has no data for this query (HTTP 404)."""
 
 
 def _cached_get_json(url: str, params: dict | list | None = None, timeout: int = 90,
                      headers: dict | None = None):
-    """GET a URL and return parsed JSON, using a simple on-disk cache."""
+    """
+    GET a URL and return parsed JSON, using a simple on-disk cache.
+
+    Offline use: with MEA_OFFLINE=1 the network is never touched and cached answers are used
+    whatever their age. Without it, a failed request falls back to an expired cached answer.
+    """
     path = _cache_path(url, params)
-    if _is_cached(url, params):
+
+    def from_cache():
         cached = json.loads(path.read_text())
         if isinstance(cached, dict) and cached.get("__not_found__"):
             raise NotFound(f"No data at {url} (cached)")
         return cached
+
+    if _is_cached(url, params) or (offline() and path.exists()):
+        return from_cache()
+    if offline():
+        raise RuntimeError(f"Offline mode and no cached data for {url}. Run once with internet to fill data/cache.")
 
     last_error = None
     for attempt in range(5):
@@ -125,6 +141,11 @@ def _cached_get_json(url: str, params: dict | list | None = None, timeout: int =
         except (requests.RequestException, ValueError) as exc:
             log.warning("request to %s failed (attempt %d): %s", url, attempt + 1, exc)
             last_error = exc
+            if path.exists():  # no network or a failing API: an older answer beats no answer
+                log.warning("using cached data older than a week for %s", url)
+                return from_cache()
+            if isinstance(exc, requests.ConnectionError) and attempt >= 1:
+                break  # no connection at all: don't keep the user waiting
             time.sleep(1.5 * (attempt + 1))
     raise RuntimeError(f"Request failed for {url}: {last_error}")
 

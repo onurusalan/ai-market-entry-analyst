@@ -5,7 +5,7 @@
   --ok: #0e7a46; --ok-bg: #e5f5ec; --warn: #a35f00; --warn-bg: #fff3dc; --bad: #c0262d; --bad-bg: #fdeaea;
   --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 4px 16px rgba(16, 24, 40, .06);
   --shadow-lg: 0 12px 40px rgba(11, 37, 69, .14);
-  --radius: 14px; --font: "Inter", -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  --radius: 14px; --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, "Helvetica Neue", Arial, sans-serif;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
@@ -250,7 +250,7 @@ input[type="number"]:focus { outline: 3px solid color-mix(in srgb, var(--accent)
 .chart-card h3 { margin: 0; font-size: 15px; } .chart-card .cap { margin: 2px 0 6px; font-size: 13px; color: var(--muted); }
 .plot { width: 100%; height: 300px; }
 .map-split { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
-.map-split .plot { height: 420px; }
+.map-split .plot { height: 420px; } .map-split { align-items: center; }
 .map-split table { font-size: 13.5px; } .map-split td, .map-split th { padding: 7px 10px; }
 @media (max-width: 860px) { .charts, .map-split { grid-template-columns: 1fr; } .map-split .plot { height: 340px; } }
 
@@ -311,3 +311,13 @@ input[type="number"]:focus { outline: 3px solid color-mix(in srgb, var(--accent)
 .reco h2 { margin: 0 0 6px; font-size: 22px; }
 .reco p { margin: 0; color: var(--muted); }
 @media (max-width: 960px) { .slots { grid-template-columns: 1fr; } }
+
+/* EU tile map (offline, no geometry files) */
+.tilemap { display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: repeat(7, 1fr); gap: 6px; max-width: 520px; margin: 6px auto 0; aspect-ratio: 1 / 1; }
+.tile { border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: var(--text); line-height: 1.1; min-width: 0; }
+.tile b { font-size: 14px; } .tile span { font-size: 11.5px; opacity: .85; font-variant-numeric: tabular-nums; }
+.tile.dark { color: #fff; }
+.tile-legend { display: flex; align-items: center; gap: 8px; justify-content: center; margin-top: 10px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+.tile-legend i { width: 120px; height: 8px; border-radius: 99px; background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 15%, var(--surface-2)), var(--accent)); }
+.tile-legend small { flex-basis: 100%; text-align: center; }
+@media (max-width: 420px) { .tile b { font-size: 11px; } .tile span { display: none; } }

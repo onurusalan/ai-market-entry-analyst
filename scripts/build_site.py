@@ -41,6 +41,7 @@ START = END - 5
 
 PRODUCTS = catalog.PRODUCTS
 PRODUCT_LABELS = catalog.PRODUCT_LABELS
+EU_TILES = catalog.EU_TILES
 TARGETS = catalog.TARGET_HOMES
 CASES = catalog.CASES
 CASE_COMPANY = {(c[0], c[1], c[2], c[3]): c[4] for c in CASES}
@@ -229,6 +230,7 @@ def build_data() -> dict:
     catalog = {
         "updated": date.today().isoformat(), "years": [START, END], "repo": REPO_URL,
         "kb": kb.kb_status(),
+        "tiles": EU_TILES,
         "vat": {code: {"name": name(code), "rate": rate} for code, rate in sorted(kb.VAT_RATES.items(), key=lambda x: name(x[0]))},
         "trade_policy": [{"hs": hs, "label": PRODUCT_LABELS.get(hs, f"HS {hs}"), "note": note,
                           "checked": kb.TRADE_DEFENCE_META.get(hs, (kb.KB_AS_OF, None))[0],
@@ -276,7 +278,22 @@ def copy_front_end(plotly_version: str) -> None:
             f'<!doctype html><meta charset="utf-8"><title>Redirecting…</title>'
             f'<meta http-equiv="refresh" content="0; url={url}"><link rel="canonical" href="{url}">'
             f'<a href="{url}">Open the report</a>')
+    # Plotly ships inside the Python package: copy it so the site needs no CDN (works offline)
+    import plotly
+    vendor = DOCS / "assets" / "vendor"
+    vendor.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(Path(plotly.__file__).parent / "package_data" / "plotly.min.js", vendor / "plotly.min.js")
     (DOCS / ".nojekyll").write_text("")
+
+
+def write_offline_bundle() -> None:
+    """
+    All JSON data in one script, so the site also works when index.html is opened straight from disk
+    (browsers block fetch() on file:// pages, but they do load <script> files).
+    """
+    data = {str(p.relative_to(DOCS)): json.loads(p.read_text()) for p in sorted((DOCS / "data").rglob("*.json"))}
+    (DOCS / "data" / "bundle.js").write_text(
+        "window.__MEA_DATA=" + json.dumps(data, ensure_ascii=False, separators=(",", ":")) + ";\n")
 
 
 def main() -> None:
@@ -291,6 +308,7 @@ def main() -> None:
     (DOCS / "cases.json").unlink(missing_ok=True)
     DATA.rename(DOCS / "data")
     copy_front_end(catalog["plotly"])
+    write_offline_bundle()
     print(f"Built {catalog['report_count']} reports for {len(catalog['available'])} markets into {DOCS}")
 
 

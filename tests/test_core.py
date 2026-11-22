@@ -308,6 +308,12 @@ def test_site_build_smoke(monkeypatch, tmp_path):
     assert cat["report_count"] == 480 and cat["trade_policy"] and cat["vat"]["DE"]["rate"] == 19
     html = (tmp_path / "report.html").read_text()
     assert "{{" not in html and (tmp_path / "insights.html").exists() and (tmp_path / "compare.html").exists()
+    # offline: no CDN scripts or web fonts, local Plotly and a data bundle for file:// use
+    for page in ("index.html", "report.html", "insights.html", "compare.html"):
+        text = (tmp_path / page).read_text()
+        assert "cdn.plot.ly" not in text and "fonts.googleapis" not in text
+    assert (tmp_path / "assets" / "vendor" / "plotly.min.js").exists()
+    assert (tmp_path / "data" / "bundle.js").read_text().startswith("window.__MEA_DATA=")
 
 
 # ---------------------------------------------------------------- command-line interface
@@ -531,3 +537,48 @@ def test_seasonality_peak_block_starts_before_strongest_month(monkeypatch):
     monkeypatch.setattr(ds, "eu_monthly_extra_imports", lambda hs, years: pd.Series(vals))
     s = analysis.seasonality("841861", 2024)
     assert s["peak_months"] == ["Mar", "Apr", "May"] and s["ship_window"] == ["Jan", "Feb"]
+
+
+
+# ---------------------------------------------------------------- offline use
+def test_offline_mode_uses_stale_cache_and_never_calls_network(monkeypatch, tmp_path):
+    import os
+    import time as _t
+    calls = _fake_http(monkeypatch, tmp_path, [])
+    path = ds._cache_path("https://x.test/old", None)
+    path.write_text('{"v": 1}')
+    old = _t.time() - 30 * 24 * 3600
+    os.utime(path, (old, old))                                    # a month old: expired
+    monkeypatch.setenv("MEA_OFFLINE", "1")
+    assert ds._cached_get_json("https://x.test/old") == {"v": 1} and calls == []
+    with pytest.raises(RuntimeError, match="Offline mode"):
+        ds._cached_get_json("https://x.test/never-cached")
+
+
+def test_network_failure_falls_back_to_expired_cache(monkeypatch, tmp_path):
+    import os
+    import time as _t
+    from types import SimpleNamespace
+
+    import requests
+
+    monkeypatch.setattr(ds, "CACHE_DIR", tmp_path)
+    monkeypatch.delenv("MEA_OFFLINE", raising=False)
+    path = ds._cache_path("https://x.test/stale", None)
+    path.write_text('[1]')
+    old = _t.time() - 30 * 24 * 3600
+    os.utime(path, (old, old))
+
+    def boom(*a, **k):
+        raise requests.ConnectionError("no internet")
+    monkeypatch.setattr(ds, "_http", lambda: SimpleNamespace(get=boom))
+    monkeypatch.setattr(ds.time, "sleep", lambda s: None)
+    assert ds._cached_get_json("https://x.test/stale") == [1]
+
+
+def test_eu_tile_map_covers_all_members():
+    from src import catalog, viz
+    assert len(catalog.EU_TILES) == 27 and set(catalog.EU_TILES) == set(catalog.EU_ISO3)
+    assert len(set(catalog.EU_TILES.values())) == 27                # no two members share a tile
+    fig = viz.eu_tile_map({"DE": 8.1, "FR": 7.2}, "t")
+    assert len(fig.data) == 2 and list(fig.data[1].text) == ["DE", "FR"]
